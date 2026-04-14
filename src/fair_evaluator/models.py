@@ -49,6 +49,9 @@ class Fair(Base):
     key_features = Column(JSON, nullable=True)
     venue = Column(String, nullable=True)
     address = Column(String, nullable=True)
+    instagram = Column(String, nullable=True)
+    facebook = Column(String, nullable=True)
+    tiktok = Column(String, nullable=True)
 
     def __repr__(self):
         return f"<Fair {self.name} ({self.id})>"

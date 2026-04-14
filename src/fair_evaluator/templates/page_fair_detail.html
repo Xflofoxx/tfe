@@ -53,8 +53,9 @@
             </span>
           </div>
           <div>
-            <button class="btn btn-primary me-2" onclick="analyzeFair()" title="Raccogli dati da web e documenti"><i class="fas fa-spider me-2"></i>Raccogli Dati</button>
+            <button class="btn btn-primary me-2" onclick="analyzeFair()" title="Raccogli dati da web"><i class="fas fa-spider me-2"></i>Raccogli Dati</button>
             <button class="btn btn-success me-2" onclick="evaluateFair()" {% if not fair.attachments %}disabled{% endif %}><i class="fas fa-robot me-2"></i>Valuta</button>
+            <button class="btn btn-warning me-2" onclick="saveAllFields()" title="Salva tutte le modifiche"><i class="fas fa-save me-2"></i>Salva</button>
             <button class="btn btn-danger" onclick="deleteFair()"><i class="fas fa-trash me-2"></i>Elimina</button>
           </div>
         </div>
@@ -181,10 +182,32 @@
                   <label class="form-label small text-muted">LinkedIn</label>
                   <input type="text" class="form-control form-control-sm" id="fairLinkedin" value="{{ fair.linkedin_url or '' }}" onchange="saveField('company_linkedin')">
                 </div>
+                <div class="row">
+                  <div class="col-4 mb-2">
+                    <label class="form-label small text-muted">Instagram</label>
+                    <input type="text" class="form-control form-control-sm" id="fairInstagram" placeholder="@account" onchange="saveField('instagram')">
+                  </div>
+                  <div class="col-4 mb-2">
+                    <label class="form-label small text-muted">Facebook</label>
+                    <input type="text" class="form-control form-control-sm" id="fairFacebook" placeholder="page" onchange="saveField('facebook')">
+                  </div>
+                  <div class="col-4 mb-2">
+                    <label class="form-label small text-muted">TikTok</label>
+                    <input type="text" class="form-control form-control-sm" id="fairTiktok" placeholder="@account" onchange="saveField('tiktok')">
+                  </div>
+                </div>
                 <div class="mb-0">
                   <label class="form-label small text-muted">Email</label>
                   <input type="email" class="form-control form-control-sm" id="fairEmail" value="{{ fair.fair_email or '' }}" onchange="saveField('fair_email')">
                 </div>
+              </div>
+            </div>
+            
+            <div class="card mb-3" id="socialGallery">
+              <div class="card-header"><h5 class="mb-0"><i class="fab fa-instagram me-2"></i>Instagram</h5></div>
+              <div class="card-body">
+                <div class="row" id="instagramImages"></div>
+                <button class="btn btn-sm btn-outline-primary mt-2" onclick="loadInstagram()"><i class="fas fa-images"></i> Carica Immagini</button>
               </div>
             </div>
             
@@ -291,8 +314,24 @@
       'company_website': 'fairSiteUrl',
       'company_linkedin': 'fairLinkedin',
       'fair_email': 'fairEmail',
+      'instagram': 'fairInstagram',
+      'facebook': 'fairFacebook',
+      'tiktok': 'fairTiktok',
       'status': 'fairStatus'
     };
+    
+    async function loadInstagram() {
+      const ig = document.getElementById('fairInstagram').value.replace('@', '');
+      const container = document.getElementById('instagramImages');
+      container.innerHTML = '<div class="col-12 text-muted"><i class="fas fa-info-circle"></i> Carica le immagini Instagram manualmente o usa il link del profilo</div>';
+      if (!ig) {
+        showMessage('Inserisci username Instagram', 'warning');
+        return;
+      }
+      showMessage('Instagram richiede API ufficiale - mostra placeholder', 'info');
+      
+      container.innerHTML = '<div class="col-12"><div class="alert alert-info"><i class="fab fa-instagram"></i> Per mostrare automaticamente le immagini Instagram serve Webhook API. Usa il pulsante "Raccogli Dati" per estrarre immagini dalla pagina web.</div></div>';
+    }
     
     async function saveField(field) {
       const elId = fieldIdMap[field] || 'fair' + field.charAt(0).toUpperCase() + field.slice(1);
@@ -320,6 +359,41 @@
           showMessage('Errore: ' + (err.detail || 'salvataggio fallito'), 'danger');
         }
       } catch (err) { showMessage('Errore: ' + err.message, 'danger'); }
+    }
+    
+    async function saveAllFields() {
+      const btn = event.target;
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+      showMessage('Salvataggio...', 'info');
+      let saved = 0;
+      let errors = [];
+      
+      for (const [field, elId] of Object.entries(fieldIdMap)) {
+        const el = document.getElementById(elId);
+        if (!el || !el.value || !el.value.trim()) continue;
+        
+        let value = el.value;
+        if (field === 'dates') value = [el.value];
+        try {
+          const resp = await fetch('/api/fairs/' + fairId, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({[field]: value})
+          });
+          if (resp.ok) saved++;
+          else errors.push(field);
+        } catch (e) { errors.push(field); }
+      }
+      
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-save me-2"></i>Salva';
+      
+      if (errors.length === 0) {
+        showMessage('Salvati ' + saved + ' campi!', 'success');
+      } else {
+        showMessage('Salvati ' + saved + ', errori: ' + errors.length, 'warning');
+      }
     }
     
     async function saveFieldJsonList(field) {
@@ -388,9 +462,8 @@
       }
       
       showMessage('Raccolta dati in corso...', 'info');
-      
-      const logContainer = document.getElementById('scrapeLogs') || createLogContainer();
-      logContainer.innerHTML = '';
+      const logDiv = logContainer();
+      logDiv.innerHTML = '';
       
       try {
         const resp = await fetch('/api/scrape-url', {
@@ -403,30 +476,36 @@
         
         if (data.logs) {
           for (const log of data.logs) {
-            const cls = log.status === 'ok' ? 'text-success' : log.status === 'warning' ? 'text-warning' : 'text-danger';
-            logContainer.innerHTML += `<div class="${cls} small"><i class="fas fa-${log.status === 'ok' ? 'check' : log.status === 'warning' ? 'exclamation' : 'times'}"></i> [${log.step}] ${log.message}</div>`;
+            const row = document.createElement('div');
+            row.className = 'd-flex align-items-center mb-1';
+            const icon = log.status === 'ok' ? 'check text-success' : log.status === 'warning' ? 'exclamation text-warning' : 'times text-danger';
+            row.innerHTML = `<i class="fas fa-${icon} me-2"></i><span class="${log.status === 'ok' ? '' : 'text-' + log.status} flex-grow-1">${log.message}</span>`;
+            logDiv.appendChild(row);
           }
         }
         
         if (data.error) {
-          showMessage('Errore scraping: ' + data.error, 'danger');
+          showMessage('Errore: ' + data.error, 'danger');
           return;
         }
         
+        const updated = [];
         if (data.ai_data) {
           const ai = data.ai_data;
-          if (ai.name) { document.getElementById('fairName').value = ai.name; saveField('name'); }
-          if (ai.location) { document.getElementById('fairLocation').value = ai.location; saveField('location'); }
-          if (ai.dates) { document.getElementById('fairDates').value = ai.dates; saveField('dates'); }
-          if (ai.sector) { document.getElementById('fairSector').value = ai.sector; saveField('sector'); }
-          if (ai.organizer) { document.getElementById('fairOrganizer').value = ai.organizer; saveField('organizer'); }
-          if (ai.venue) { document.getElementById('fairVenue').value = ai.venue; saveField('venue'); }
-          if (ai.description) { document.getElementById('fairDescription').value = ai.description; saveField('description'); }
+          if (ai.name) { document.getElementById('fairName').value = ai.name; saveField('name'); updated.push('nome'); }
+          if (ai.location) { document.getElementById('fairLocation').value = ai.location; saveField('location'); updated.push('luogo'); }
+          if (ai.dates) { document.getElementById('fairDates').value = ai.dates; saveField('dates'); updated.push('date'); }
+          if (ai.sector) { document.getElementById('fairSector').value = ai.sector; saveField('sector'); updated.push('settore'); }
+          if (ai.organizer) { document.getElementById('fairOrganizer').value = ai.organizer; saveField('organizer'); updated.push('organizz.'); }
+          if (ai.venue) { document.getElementById('fairVenue').value = ai.venue; saveField('venue'); updated.push('venue'); }
+          if (ai.expected_visitors) { document.getElementById('fairExpectedVisitors').value = ai.expected_visitors; saveField('expected_visitors'); updated.push('visitatori'); }
+          if (ai.exhibitors_count) { document.getElementById('fairExhibitorsCount').value = ai.exhibitors_count; saveField('exhibitors_count'); updated.push('espositori'); }
         }
         
         if (data.title && !document.getElementById('fairName').value) {
           document.getElementById('fairName').value = data.title;
           saveField('name');
+          updated.push('titolo');
         }
         
         if (data.description && !document.getElementById('fairDescription').value) {
@@ -434,38 +513,102 @@
           saveField('description');
         }
         
-        logContainer.innerHTML += '<div class="text-info small"><i class="fas fa-arrow-right"></i> [ALLEGATI] Analizzo allegati...</div>';
+        logDiv.innerHTML += `<div class="text-success mt-2"><i class="fas fa-check-circle"></i> Aggiornati: ${updated.length ? updated.join(', ') : 'nessuno'}</div>`;
         
-        try {
-          const analyzeResp = await fetch('/api/fairs/' + fairId + '/analyze', { method: 'POST' });
-          const analyzeData = await analyzeResp.json();
-          if (analyzeData.logs) {
-            for (const log of analyzeData.logs) {
-              const cls = log.status === 'ok' ? 'text-success' : log.status === 'warning' ? 'text-warning' : 'text-danger';
-              logContainer.innerHTML += `<div class="${cls} small"><i class="fas fa-${log.status === 'ok' ? 'check' : log.status === 'warning' ? 'exclamation' : 'times'}"></i> [${log.step}] ${log.message}</div>`;
-            }
-          }
-        } catch (e) {
-          logContainer.innerHTML += `<div class="text-danger small"><i class="fas fa-times"></i> [ERROR] ${e.message}</div>`;
-        }
-        
-        showMessage('Dati raccolti da web e allegati!', 'success');
+        showMessage('Raccolta completata!', 'success');
         
       } catch (err) {
         showMessage('Errore: ' + err.message, 'danger');
       }
     }
     
-    function createLogContainer() {
-      const div = document.createElement('div');
-      div.id = 'scrapeLogs';
-      div.className = 'small p-2 bg-dark text-light rounded';
-      div.style.maxHeight = '300px';
-      div.style.overflowY = 'auto';
-      div.style.fontSize = '11px';
-      const msg = document.getElementById('message');
-      msg.parentNode.insertBefore(div, msg.nextSibling);
-      return div;
+    function logContainer() {
+      let c = document.getElementById('scrapeLogs');
+      if (!c) {
+        const div = document.createElement('div');
+        div.id = 'scrapeLogs';
+        div.className = 'small p-2 bg-dark text-light rounded mb-2';
+        div.style.maxHeight = '250px';
+        div.style.overflowY = 'auto';
+        div.style.fontSize = '11px';
+        div.style.fontFamily = 'monospace';
+        const msg = document.getElementById('message');
+        msg.parentNode.insertBefore(div, msg.nextSibling);
+        c = div;
+      }
+      return c;
+    }
+    
+    async function analyzeFair() {
+      const urlField = document.getElementById('fairUrl');
+      const url = urlField.value;
+      if (!url) {
+        showMessage('Inserisci prima l\'URL della fiera', 'warning');
+        return;
+      }
+      
+      showMessage('Raccolta dati in corso...', 'info');
+      logContainer().innerHTML = '';
+      
+      try {
+        const resp = await fetch('/api/scrape-url', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({url: url})
+        });
+        
+        const data = await resp.json();
+        
+        if (data.logs) {
+          for (const log of data.logs) {
+            const row = document.createElement('div');
+            row.className = 'd-flex align-items-center mb-1';
+            const icon = log.status === 'ok' ? 'check text-success' : log.status === 'warning' ? 'exclamation text-warning' : 'times text-danger';
+            const msgStyle = log.status === 'ok' ? '' : 'text-' + (log.status === 'warning' ? 'warning' : 'danger');
+            row.innerHTML = `<i class="fas fa-${icon} me-2"></i><span class="${msgStyle} flex-grow-1">${log.message}</span>`;
+            logContainer().appendChild(row);
+          }
+        }
+        
+        if (data.error) {
+          showMessage('Errore: ' + data.error, 'danger');
+          return;
+        }
+        
+        const updatedFields = [];
+        if (data.ai_data) {
+          const ai = data.ai_data;
+          if (ai.name) { document.getElementById('fairName').value = ai.name; saveField('name'); updatedFields.push('nome'); }
+          if (ai.location) { document.getElementById('fairLocation').value = ai.location; saveField('location'); updatedFields.push('location'); }
+          if (ai.dates) { document.getElementById('fairDates').value = ai.dates; saveField('dates'); updatedFields.push('date'); }
+          if (ai.sector) { document.getElementById('fairSector').value = ai.sector; saveField('sector'); updatedFields.push('settore'); }
+          if (ai.organizer) { document.getElementById('fairOrganizer').value = ai.organizer; saveField('organizer'); updatedFields.push('organizzatore'); }
+          if (ai.venue) { document.getElementById('fairVenue').value = ai.venue; saveField('venue'); updatedFields.push('venue'); }
+          if (ai.expected_visitors) { document.getElementById('fairExpectedVisitors').value = ai.expected_visitors; saveField('expected_visitors'); updatedFields.push('visitatori'); }
+          if (ai.exhibitors_count) { document.getElementById('fairExhibitorsCount').value = ai.exhibitors_count; saveField('exhibitors_count'); updatedFields.push('espositori'); }
+        }
+        
+        if (data.title && !document.getElementById('fairName').value) {
+          document.getElementById('fairName').value = data.title;
+          saveField('name');
+          updatedFields.push('titolo');
+        }
+        
+        if (data.description && !document.getElementById('fairDescription').value) {
+          document.getElementById('fairDescription').value = data.description;
+          saveField('description');
+        }
+        
+        const info = document.createElement('div');
+        info.className = 'text-success mt-2';
+        info.innerHTML = '<i class="fas fa-check-circle"></i> ' + (updatedFields.length ? 'Aggiornati: ' + updatedFields.join(', ') : 'Nessun dato estratto');
+        logContainer().appendChild(info);
+        
+        showMessage('Raccolta completata!', 'success');
+        
+      } catch (err) {
+        showMessage('Errore: ' + err.message, 'danger');
+      }
     }
     
     async function evaluateFair() {
