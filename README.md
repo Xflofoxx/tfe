@@ -8,10 +8,12 @@ Applicazione web per valutare se partecipare o meno a una fiera commerciale. L'a
 
 ### Creazione e Gestione Fiere
 - Creazione di nuove fiere con URL del sito web
-- Recupero automatico delle informazioni dal sito della fiera (web scraping)
+- Recupero automatico delle informazioni dal sito della fiera (web scraping + Ollama)
 - Modifica e aggiornamento dei dati della fiera
 - Eliminazione delle fiere
 - Visualizzazione lista fiere con filtri e paginazione
+- Campi social: Instagram, Facebook, LinkedIn, TikTok
+- Galleria immagini
 
 ### Analisi Automatica
 - Estrazione dati dal sito web della fiera:
@@ -20,11 +22,12 @@ Applicazione web per valutare se partecipare o meno a una fiera commerciale. L'a
   - Numero visitatori previsti, numero espositori
   - Settore target, categorie prodotto
 - Salvataggio dei dati estratti nel record della fiera
+- Log dettagliato delle operazioni durante scraping
 
 ### Caricamento Allegati
 - Upload di brochure PDF e documenti
 - Estrazione automatica del testo dai PDF
-- Supporto per formati: PDF, TXT, DOC, DOCX, immagini (con OCR)
+- Supporto per formati: PDF, TXT, DOCX
 
 ### Valutazione con LLM
 - Caricamento della strategia aziendale (testo)
@@ -35,9 +38,20 @@ Applicazione web per valutare se partecipare o meno a una fiera commerciale. L'a
   - Stima budget consigliato
   - Valutazione ROI
 
-### Storico e Analisi
-- Cronologia delle valutazioni
-- Dati storici delle fiere (anni precedenti)
+### Interfaccia UI
+- Pagina dettaglio fiera con "Raccogli Dati" e "Salva"
+- Log in tempo reale durante lo scraping
+- Gestione contatti (leads)
+- Statistiche database
+
+## Stack Tecnologico
+
+- **Backend**: Python 3.13, FastAPI
+- **Database**: SQLite + SQLAlchemy ORM
+- **LLM**: Ollama (locale)
+- **Web Scraping**: Requests + BeautifulSoup + curl + Playwright
+- **PDF**: PyMuPDF
+- **Report**: Jinja2, WeasyPrint (opzionale)
 - Statistiche sul database
 
 ### Report
