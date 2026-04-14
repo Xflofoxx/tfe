@@ -278,7 +278,7 @@ def scrape_url(url_data: dict, db: Session = Depends(get_db)):
     if not settings:
         settings = Settings()
 
-    result = {"url": url, "text_content": "", "error": ""}
+    result = {"url": url, "text_content": "", "error": "", "ai_data": None}
 
     try:
         headers = {
@@ -307,6 +307,40 @@ def scrape_url(url_data: dict, db: Session = Depends(get_db)):
             text_content = ' '.join(text_content.split())
             result["text_content"] = text_content[:3000]
             result["text_length"] = len(text_content)
+
+            ollama_available = False
+            try:
+                resp = requests.get(f"{settings.ollama_url}/api/tags", timeout=3)
+                ollama_available = resp.status_code == 200
+            except Exception:
+                pass
+
+            if ollama_available and settings.ollama_model and text_content:
+                try:
+                    client = OllamaClient(settings.ollama_url)
+                    model_name = str(settings.ollama_model)
+
+                    prompt = f"""You are a trade fair analyzer. Extract information from this website text.
+
+TEXT CONTENT:
+{text_content[:6000]}
+
+Extract in JSON format:
+{{"name": "official fair name", "description": "2-3 sentence description", "location": "city", "dates": "dates if mentioned", "sector": "industry sector", "organizer": "organizer name", "venue": "venue name", "expected_visitors": number, "exhibitors_count": number}}
+
+Reply ONLY with valid JSON."""
+
+                    ai_resp = client.chat(model_name, prompt)
+                    result["prompt"] = prompt[:500] + "..."
+                    result["ai_response"] = ai_resp[:300] + "..." if ai_resp and len(ai_resp) > 300 else ai_resp
+
+                    if ai_resp:
+                        import re, json
+                        match = re.search(r'\{[\s\S]*\}', ai_resp)
+                        if match:
+                            result["ai_data"] = json.loads(match.group())
+                except Exception as e:
+                    result["ai_error"] = str(e)
 
     except Exception as e:
         result["error"] = str(e)

@@ -188,6 +188,14 @@
         
         debugOutput.textContent = formatJson(data);
         
+        if (data.error) {
+          document.getElementById('message').innerHTML = '<div class="alert alert-danger">Errore durante lo scraping: ' + data.error + '</div>';
+          scrapedDiv.classList.add('d-none');
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-spider me-2"></i>Raccogli Dati';
+          return;
+        }
+
         if (data.ai_data) {
           const ai = data.ai_data;
           if (ai.name) document.getElementById('fairName').value = ai.name;
@@ -196,6 +204,8 @@
           if (ai.sector) document.getElementById('fairSector').value = ai.sector;
           if (ai.organizer) document.getElementById('fairOrganizer').value = ai.organizer;
           if (ai.venue) document.getElementById('fairVenue').value = ai.venue;
+          if (ai.expected_visitors) document.getElementById('fairDescription').value = (document.getElementById('fairDescription').value || '') + '\nVisitatori attesi: ' + ai.expected_visitors;
+          if (ai.exhibitors_count) document.getElementById('fairDescription').value = (document.getElementById('fairDescription').value || '') + '\nEspositori: ' + ai.exhibitors_count;
         }
         
         if (data.title && !document.getElementById('fairName').value) {
