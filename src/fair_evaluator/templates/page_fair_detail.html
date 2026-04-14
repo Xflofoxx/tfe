@@ -380,9 +380,55 @@
     }
     
     async function analyzeFair() {
+      const urlField = document.getElementById('fairUrl');
+      const url = urlField.value;
+      if (!url) {
+        showMessage('Inserisci prima l\'URL della fiera', 'warning');
+        return;
+      }
+      
       showMessage('Raccolta dati in corso...', 'info');
-      const resp = await fetch('/api/fairs/' + fairId + '/analyze', { method: 'POST' });
-      showMessage('Dati raccolti! Ricarica per vedere.', 'success');
+      
+      try {
+        const resp = await fetch('/api/scrape-url', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({url: url})
+        });
+        
+        const data = await resp.json();
+        
+        if (data.error) {
+          showMessage('Errore scraping: ' + data.error, 'danger');
+          return;
+        }
+        
+        if (data.ai_data) {
+          const ai = data.ai_data;
+          if (ai.name) { document.getElementById('fairName').value = ai.name; saveField('name'); }
+          if (ai.location) { document.getElementById('fairLocation').value = ai.location; saveField('location'); }
+          if (ai.dates) { document.getElementById('fairDates').value = ai.dates; saveField('dates'); }
+          if (ai.sector) { document.getElementById('fairSector').value = ai.sector; saveField('sector'); }
+          if (ai.organizer) { document.getElementById('fairOrganizer').value = ai.organizer; saveField('organizer'); }
+          if (ai.venue) { document.getElementById('fairVenue').value = ai.venue; saveField('venue'); }
+          if (ai.description) { document.getElementById('fairDescription').value = ai.description; saveField('description'); }
+        }
+        
+        if (data.title && !document.getElementById('fairName').value) {
+          document.getElementById('fairName').value = data.title;
+          saveField('name');
+        }
+        
+        if (data.description && !document.getElementById('fairDescription').value) {
+          document.getElementById('fairDescription').value = data.description;
+          saveField('description');
+        }
+        
+        showMessage('Dati raccolti e salvati!', 'success');
+        
+      } catch (err) {
+        showMessage('Errore: ' + err.message, 'danger');
+      }
     }
     
     async function evaluateFair() {
