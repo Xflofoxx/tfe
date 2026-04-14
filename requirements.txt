@@ -1,0 +1,17 @@
+fastapi
+uvicorn
+sqlalchemy
+requests
+beautifulsoup4
+PyMuPDF
+jinja2
+weasyprint
+Pillow
+python-dotenv
+openpyxl
+pytest
+pytest-cov
+httpx
+python-multipart
+ruff
+mypy

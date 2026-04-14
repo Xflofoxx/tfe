@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nuova Fiera - Valutatore Fiere</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+    .sidebar { background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%); min-height: 100vh; }
+    .nav-link { color: #94a3b8; padding: 12px 20px; border-radius: 8px; margin: 2px 8px; transition: all 0.2s; }
+    .nav-link:hover, .nav-link.active { background: #334155; color: #fff; }
+    .card { border: none; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .btn-primary { background: #3b82f6; border-color: #3b82f6; }
+    .btn-primary:hover { background: #2563eb; border-color: #2563eb; }
+    .scraping { opacity: 0.6; pointer-events: none; }
+    .spinner-border-sm { width: 14px; height: 14px; border-width: 2px; }
+  </style>
+</head>
+<body>
+  <div class="container-fluid">
+    <div class="row">
+      <div class="col-md-2 sidebar p-0">
+        <div class="p-3 text-white border-bottom border-secondary">
+          <h5 class="mb-0"><i class="fas fa-clipboard-check me-2"></i>Valutatore Fiere</h5>
+        </div>
+        <nav class="nav flex-column mt-2">
+          <a class="nav-link" href="/"><i class="fas fa-home me-2"></i>Home</a>
+          <a class="nav-link" href="/fairs"><i class="fas fa-building me-2"></i>Fiere</a>
+          <a class="nav-link active" href="/fairs/new"><i class="fas fa-plus me-2"></i>Nuova Fiera</a>
+          <a class="nav-link" href="/settings"><i class="fas fa-cog me-2"></i>Impostazioni</a>
+          <a class="nav-link" href="/maintenance"><i class="fas fa-database me-2"></i>Manutenzione</a>
+        </nav>
+      </div>
+      <div class="col-md-10 p-4">
+        <div class="card">
+          <div class="card-body">
+            <h4 class="mb-4"><i class="fas fa-plus-circle me-2"></i>Nuova Fiera</h4>
+            <form id="fairForm">
+              <div class="row mb-3">
+                <div class="col-md-9">
+                  <label class="form-label">URL Fiera *</label>
+                  <input type="url" class="form-control" id="fairUrl" required placeholder="https://www.example-fair.com">
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                  <button type="button" class="btn btn-outline-primary w-100" id="scrapeBtn" onclick="scrapeUrl()">
+                    <i class="fas fa-spider me-2"></i>Raccogli Dati
+                  </button>
+                </div>
+              </div>
+              
+              <div id="scrapedData" class="alert alert-info d-none">
+                <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                <span>Raccolta dati in corso...</span>
+              </div>
+              
+              <div id="scrapedResults" class="alert alert-success d-none">
+                <h6 class="alert-heading"><i class="fas fa-check-circle me-2"></i>Dati Raccolti</h6>
+                <div id="scrapedDetails"></div>
+              </div>
+              
+              <hr>
+              
+              <h5 class="mb-3">Dati Fiera</h5>
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label class="form-label">Nome Fiera</label>
+                  <input type="text" class="form-control" id="fairName" placeholder="Nome ufficiale della fiera">
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label class="form-label">Location/Indirizzo</label>
+                  <input type="text" class="form-control" id="fairLocation" placeholder="Città, indirizzo">
+                </div>
+              </div>
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label class="form-label">Date</label>
+                  <input type="text" class="form-control" id="fairDates" placeholder="es: 15-18 Marzo 2026">
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label class="form-label">Settore</label>
+                  <input type="text" class="form-control" id="fairSector" placeholder="Settore merceologico">
+                </div>
+              </div>
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label class="form-label">Organizzatore</label>
+                  <input type="text" class="form-control" id="fairOrganizer" placeholder="Nome organizzatore">
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label class="form-label">Venue/Padiglione</label>
+                  <input type="text" class="form-control" id="fairVenue" placeholder="Nome venue">
+                </div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Descrizione</label>
+                <textarea class="form-control" id="fairDescription" rows="2" placeholder="Descrizione della fiera"></textarea>
+              </div>
+              
+              <hr>
+              <h5 class="mb-3">Contatti</h5>
+              <div class="row">
+                <div class="col-md-4 mb-3">
+                  <label class="form-label">Sito Azienda</label>
+                  <input type="url" class="form-control" id="siteUrl" placeholder="https://www.mycompany.com">
+                </div>
+                <div class="col-md-4 mb-3">
+                  <label class="form-label">LinkedIn</label>
+                  <input type="url" class="form-control" id="linkedinUrl" placeholder="https://linkedin.com/company/...">
+                </div>
+                <div class="col-md-4 mb-3">
+                  <label class="form-label">Email Fiera</label>
+                  <input type="email" class="form-control" id="fairEmail" placeholder="info@fiera.it">
+                </div>
+              </div>
+              
+              <hr>
+              <div class="mb-3">
+                <label class="form-label">Cartella Materiali</label>
+                <input type="text" class="form-control" id="folderPath" placeholder="es: C:\Fiere\Macfrut2026">
+                <small class="text-muted">Percorso locale alla cartella con materiali (preventivi, brochure, gallery)</small>
+              </div>
+              
+              <button type="submit" class="btn btn-primary"><i class="fas fa-save me-2"></i>Salva Fiera</button>
+              <a href="/fairs" class="btn btn-secondary ms-2">Annulla</a>
+            </form>
+            
+            <hr>
+            <div class="accordion" id="debugAccordion">
+              <div class="accordion-item">
+                <h2 class="accordion-header">
+                  <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseDebug">
+                    <i class="fas fa-terminal me-2"></i>Debug: Dati Scambio con Ollama
+                  </button>
+                </h2>
+                <div id="collapseDebug" class="accordion-collapse collapse" data-bs-parent="#debugAccordion">
+                  <div class="accordion-body">
+                    <pre id="debugOutput" class="bg-dark text-light p-3 rounded" style="font-size: 12px; max-height: 400px; overflow: auto;"></pre>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div id="message" class="mt-3"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    let scrapedData = null;
+    
+    function formatJson(data) {
+      return JSON.stringify(data, null, 2);
+    }
+    
+    async function scrapeUrl() {
+      const url = document.getElementById('fairUrl').value.trim();
+      if (!url) {
+        document.getElementById('message').innerHTML = '<div class="alert alert-warning">Inserisci prima l\'URL della fiera</div>';
+        return;
+      }
+      
+      const btn = document.getElementById('scrapeBtn');
+      const scrapedDiv = document.getElementById('scrapedData');
+      const resultsDiv = document.getElementById('scrapedResults');
+      const detailsDiv = document.getElementById('scrapedDetails');
+      const debugOutput = document.getElementById('debugOutput');
+      
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Analizzo...';
+      scrapedDiv.classList.remove('d-none');
+      resultsDiv.classList.add('d-none');
+      debugOutput.textContent = '';
+      
+      try {
+        const resp = await fetch('/api/scrape-url', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({url: url})
+        });
+        
+        const data = await resp.json();
+        scrapedData = data;
+        
+        debugOutput.textContent = formatJson(data);
+        
+        if (data.ai_data) {
+          const ai = data.ai_data;
+          if (ai.name) document.getElementById('fairName').value = ai.name;
+          if (ai.location) document.getElementById('fairLocation').value = ai.location;
+          if (ai.dates) document.getElementById('fairDates').value = ai.dates;
+          if (ai.sector) document.getElementById('fairSector').value = ai.sector;
+          if (ai.organizer) document.getElementById('fairOrganizer').value = ai.organizer;
+          if (ai.venue) document.getElementById('fairVenue').value = ai.venue;
+        }
+        
+        if (data.title && !document.getElementById('fairName').value) {
+          document.getElementById('fairName').value = data.title;
+        }
+        
+        if (data.description && !document.getElementById('fairDescription').value) {
+          document.getElementById('fairDescription').value = data.description;
+        }
+        
+        let html = '<div class="row">';
+        if (data.title) html += '<div class="col-6"><strong>Title:</strong> ' + data.title + '</div>';
+        if (data.ai_data && data.ai_data.name) html += '<div class="col-6"><strong>Nome:</strong> ' + data.ai_data.name + '</div>';
+        if (data.ai_data && data.ai_data.location) html += '<div class="col-6"><strong>Location:</strong> ' + data.ai_data.location + '</div>';
+        if (data.ai_data && data.ai_data.dates) html += '<div class="col-6"><strong>Date:</strong> ' + data.ai_data.dates + '</div>';
+        if (data.ai_data && data.ai_data.sector) html += '<div class="col-6"><strong>Settore:</strong> ' + data.ai_data.sector + '</div>';
+        if (data.ai_data && data.ai_data.organizer) html += '<div class="col-6"><strong>Organizzatore:</strong> ' + data.ai_data.organizer + '</div>';
+        if (data.ai_data && data.ai_data.venue) html += '<div class="col-6"><strong>Venue:</strong> ' + data.ai_data.venue + '</div>';
+        html += '</div>';
+        
+        detailsDiv.innerHTML = html;
+        resultsDiv.classList.remove('d-none');
+        
+        document.getElementById('message').innerHTML = '<div class="alert alert-success">Dati raccolti! Verifica e modifica prima di salvare.</div>';
+        
+      } catch (err) {
+        document.getElementById('message').innerHTML = '<div class="alert alert-danger">Errore: ' + err.message + '</div>';
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-spider me-2"></i>Raccogli Dati';
+        scrapedDiv.classList.add('d-none');
+      }
+    }
+    
+    document.getElementById('fairForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const formData = {
+        fair_url: document.getElementById('fairUrl').value,
+        site_url: document.getElementById('siteUrl').value,
+        linkedin_url: document.getElementById('linkedinUrl').value,
+        fair_email: document.getElementById('fairEmail').value,
+        folder_path: document.getElementById('folderPath').value,
+        name: document.getElementById('fairName').value,
+        location: document.getElementById('fairLocation').value,
+        dates: document.getElementById('fairDates').value ? [document.getElementById('fairDates').value] : null,
+        sector: document.getElementById('fairSector').value,
+        organizer: document.getElementById('fairOrganizer').value,
+        venue: document.getElementById('fairVenue').value,
+        description: document.getElementById('fairDescription').value
+      };
+      
+      try {
+        const resp = await fetch('/api/fairs', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(formData)
+        });
+        const result = await resp.json();
+        if (resp.ok) {
+          document.getElementById('message').innerHTML = '<div class="alert alert-success">Fiera salvata con successo!</div>';
+          setTimeout(() => window.location.href = '/fairs', 1500);
+        } else {
+          document.getElementById('message').innerHTML = '<div class="alert alert-danger">Errore: ' + result.detail + '</div>';
+        }
+      } catch (err) {
+        document.getElementById('message').innerHTML = '<div class="alert alert-danger">Errore: ' + err.message + '</div>';
+      }
+    });
+  </script>
+</body>
+</html>

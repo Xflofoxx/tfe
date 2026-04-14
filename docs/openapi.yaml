@@ -1,0 +1,79 @@
+openapi: 3.0.3
+info:
+  title: Fair Evaluator API
+  version: 0.1.0
+paths:
+  /fair-scan:
+    post:
+      summary: Ingestione base di una fiera
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fair_url:
+                  type: string
+                  format: uri
+                marketing_pdf:
+                  type: string
+                site_url:
+                  type: string
+                  format: uri
+                linkedin_url:
+                  type: string
+                  format: uri
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  fair_id:
+                    type: string
+                  status:
+                    type: string
+  /fairs/{fair_id}:
+    get:
+      summary: Ottenere dati della fiera
+      parameters:
+        - in: path
+          name: fair_id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+  /fairs/{fair_id}/report:
+    post:
+      summary: Generare report della fiera
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                format:
+                  type: string
+                  enum: [pdf, html, both]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                 type: object
+                 properties:
+                   html:
+                     type: string
+                   pdf:
+                     type: string

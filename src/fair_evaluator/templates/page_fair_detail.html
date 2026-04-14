@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dettaglio Fiera - Valutatore Fiere</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+    .sidebar { background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%); min-height: 100vh; }
+    .nav-link { color: #94a3b8; padding: 12px 20px; border-radius: 8px; margin: 2px 8px; transition: all 0.2s; }
+    .nav-link:hover, .nav-link.active { background: #334155; color: #fff; }
+    .card { border: none; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .status-badge { padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; }
+    .status-in_valutazione { background: #fef3c7; color: #92400e; }
+    .status-approvata { background: #dbeafe; color: #1e40af; }
+    .status-in_gestione { background: #e0e7ff; color: #4338ca; }
+    .status-conclusa { background: #d1fae5; color: #065f46; }
+    .status-rifiutata { background: #fee2e2; color: #991b1b; }
+    .file-link { display: block; padding: 8px; background: #f8fafc; border-radius: 6px; margin-bottom: 8px; text-decoration: none; color: #333; }
+    .file-link:hover { background: #e2e8f0; }
+    .field-saved { animation: flashGreen 0.5s; }
+    @keyframes flashGreen { 0% { background-color: #d1fae5; } 100% { background-color: transparent; } }
+  </style>
+</head>
+<body>
+  <div class="container-fluid">
+    <div class="row">
+      <div class="col-md-2 sidebar p-0">
+        <div class="p-3 text-white border-bottom border-secondary">
+          <h5 class="mb-0"><i class="fas fa-clipboard-check me-2"></i>Valutatore Fiere</h5>
+        </div>
+        <nav class="nav flex-column mt-2">
+          <a class="nav-link" href="/"><i class="fas fa-home me-2"></i>Home</a>
+          <a class="nav-link" href="/fairs"><i class="fas fa-building me-2"></i>Fiere</a>
+          <a class="nav-link" href="/fairs/new"><i class="fas fa-plus me-2"></i>Nuova Fiera</a>
+          <a class="nav-link" href="/settings"><i class="fas fa-cog me-2"></i>Impostazioni</a>
+          <a class="nav-link" href="/maintenance"><i class="fas fa-database me-2"></i>Manutenzione</a>
+        </nav>
+      </div>
+      <div class="col-md-10 p-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+          <div>
+            <input type="text" class="form-control form-control-lg fw-bold border-0 bg-transparent p-0" id="fairName" value="{{ fair.name }}" style="max-width: 400px;" onchange="saveField('name')">
+            <span class="status-badge status-{{ fair.status }} mt-2 d-inline-block">
+              {% if fair.status == 'in_valutazione' %}In Valutazione
+              {% elif fair.status == 'approvata' %}Approvata
+              {% elif fair.status == 'in_gestione' %}In Gestione
+              {% elif fair.status == 'conclusa' %}Conclusa
+              {% elif fair.status == 'rifiutata' %}Rifiutata{% endif %}
+            </span>
+          </div>
+          <div>
+            <button class="btn btn-primary me-2" onclick="analyzeFair()" title="Raccogli dati da web e documenti"><i class="fas fa-spider me-2"></i>Raccogli Dati</button>
+            <button class="btn btn-success me-2" onclick="evaluateFair()" {% if not fair.attachments %}disabled{% endif %}><i class="fas fa-robot me-2"></i>Valuta</button>
+            <button class="btn btn-danger" onclick="deleteFair()"><i class="fas fa-trash me-2"></i>Elimina</button>
+          </div>
+        </div>
+        
+        <div class="row">
+          <div class="col-md-6">
+            <div class="card mb-3">
+              <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fas fa-info-circle me-2"></i>Informazioni Fiera</h5>
+              </div>
+              <div class="card-body">
+                <div class="mb-2">
+                  <label class="form-label small text-muted">URL Fiera</label>
+                  <input type="text" class="form-control form-control-sm" id="fairUrl" value="{{ fair.url }}" onchange="saveField('url')">
+                </div>
+                <div class="mb-2">
+                  <label class="form-label small text-muted">Descrizione</label>
+                  <textarea class="form-control form-control-sm" id="fairDescription" rows="2" onchange="saveField('description')">{{ fair.description or '' }}</textarea>
+                </div>
+                <div class="row">
+                  <div class="col-6 mb-2">
+                    <label class="form-label small text-muted">Location</label>
+                    <input type="text" class="form-control form-control-sm" id="fairLocation" value="{{ fair.location or '' }}" onchange="saveField('location')">
+                  </div>
+                  <div class="col-6 mb-2">
+                    <label class="form-label small text-muted">Date</label>
+                    <input type="text" class="form-control form-control-sm" id="fairDates" value="{{ fair.dates[0] if fair.dates else '' }}" placeholder="es: 15-18 Marzo 2026" onchange="saveField('dates')">
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="col-6 mb-2">
+                    <label class="form-label small text-muted">Venue</label>
+                    <input type="text" class="form-control form-control-sm" id="fairVenue" value="{{ fair.venue or '' }}" onchange="saveField('venue')">
+                  </div>
+                  <div class="col-6 mb-2">
+                    <label class="form-label small text-muted">Indirizzo</label>
+                    <input type="text" class="form-control form-control-sm" id="fairAddress" value="{{ fair.address or '' }}" onchange="saveField('address')">
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="col-6 mb-2">
+                    <label class="form-label small text-muted">Organizzatore</label>
+                    <input type="text" class="form-control form-control-sm" id="fairOrganizer" value="{{ fair.organizer or '' }}" onchange="saveField('organizer')">
+                  </div>
+                  <div class="col-6 mb-2">
+                    <label class="form-label small text-muted">Settore</label>
+                    <input type="text" class="form-control form-control-sm" id="fairSector" value="{{ fair.sector or '' }}" onchange="saveField('sector')">
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="col-6 mb-2">
+                    <label class="form-label small text-muted">Frequenza</label>
+                    <select class="form-select form-select-sm" id="fairFrequency" onchange="saveField('frequency')">
+                      <option value="">Seleziona...</option>
+                      <option value="annuale" {% if fair.frequency == 'annuale' %}selected{% endif %}>Annuale</option>
+                      <option value="biennale" {% if fair.frequency == 'biennale' %}selected{% endif %}>Biennale</option>
+                      <option value="triennale" {% if fair.frequency == 'triennale' %}selected{% endif %}>Triennale</option>
+                    </select>
+                  </div>
+                  <div class="col-6 mb-2">
+                    <label class="form-label small text-muted">Edizione</label>
+                    <input type="text" class="form-control form-control-sm" id="fairEdition" value="{{ fair.edition or '' }}" placeholder="es: 42^ edizione" onchange="saveField('edition')">
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div class="card mb-3">
+              <div class="card-header"><h5 class="mb-0"><i class="fas fa-users me-2"></i>Dati Partecipazione</h5></div>
+              <div class="card-body">
+                <div class="row">
+                  <div class="col-4 mb-2">
+                    <label class="form-label small text-muted">Visitatori Attesi</label>
+                    <input type="number" class="form-control form-control-sm" id="fairExpectedVisitors" value="{{ fair.expected_visitors or '' }}" onchange="saveField('expected_visitors')">
+                  </div>
+                  <div class="col-4 mb-2">
+                    <label class="form-label small text-muted">Espositori</label>
+                    <input type="number" class="form-control form-control-sm" id="fairExhibitorsCount" value="{{ fair.exhibitors_count or '' }}" onchange="saveField('exhibitors_count')">
+                  </div>
+                  <div class="col-4 mb-2">
+                    <label class="form-label small text-muted">Costo Stand (€)</label>
+                    <input type="number" class="form-control form-control-sm" id="fairStandCost" value="{{ fair.stand_cost or '' }}" onchange="saveField('stand_cost')">
+                  </div>
+                </div>
+                <div class="mb-2">
+                  <label class="form-label small text-muted">Paesi Espositori (separati da virgola)</label>
+                  <input type="text" class="form-control form-control-sm" id="fairExhibitorCountries" value="{% if fair.exhibitor_countries %}{% if fair.exhibitor_countries is string %}{{ fair.exhibitor_countries }}{% else %}{{ fair.exhibitor_countries | join(', ') }}{% endif %}{% endif %}" placeholder="Italia, Germania, Francia..." onchange="saveFieldJsonList('exhibitor_countries')">
+                </div>
+                <div class="mb-2">
+                  <label class="form-label small text-muted">Profilo Visitatori</label>
+                  <input type="text" class="form-control form-control-sm" id="fairVisitorProfile" value="{{ fair.visitor_profile or '' }}" onchange="saveField('visitor_profile')">
+                </div>
+              </div>
+            </div>
+            
+            <div class="card mb-3">
+              <div class="card-header"><h5 class="mb-0"><i class="fas fa-tags me-2"></i>Segmenti e Categorie</h5></div>
+              <div class="card-body">
+                <div class="mb-2">
+                  <label class="form-label small text-muted">Target (separati da virgola)</label>
+                  <input type="text" class="form-control form-control-sm" id="fairTargetSegments" value="{% if fair.target_segments %}{% if fair.target_segments is string %}{{ fair.target_segments }}{% else %}{{ fair.target_segments | join(', ') }}{% endif %}{% endif %}" onchange="saveFieldJsonList('target_segments')">
+                </div>
+                <div class="mb-2">
+                  <label class="form-label small text-muted">Categorie Prodotto (separate da virgola)</label>
+                  <input type="text" class="form-control form-control-sm" id="fairProductCategories" value="{% if fair.product_categories %}{% if fair.product_categories is string %}{{ fair.product_categories }}{% else %}{{ fair.product_categories | join(', ') }}{% endif %}{% endif %}" onchange="saveFieldJsonList('product_categories')">
+                </div>
+                <div class="mb-2">
+                  <label class="form-label small text-muted">Caratteristiche Chiave (separate da virgola)</label>
+                  <input type="text" class="form-control form-control-sm" id="fairKeyFeatures" value="{% if fair.key_features %}{% if fair.key_features is string %}{{ fair.key_features }}{% else %}{{ fair.key_features | join(', ') }}{% endif %}{% endif %}" onchange="saveFieldJsonList('key_features')">
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="col-md-6">
+            <div class="card mb-3">
+              <div class="card-header"><h5 class="mb-0"><i class="fas fa-link me-2"></i>Contatti</h5></div>
+              <div class="card-body">
+                <div class="mb-2">
+                  <label class="form-label small text-muted">Sito Web</label>
+                  <input type="text" class="form-control form-control-sm" id="fairSiteUrl" value="{{ fair.site_url or '' }}" onchange="saveField('company_website')">
+                </div>
+                <div class="mb-2">
+                  <label class="form-label small text-muted">LinkedIn</label>
+                  <input type="text" class="form-control form-control-sm" id="fairLinkedin" value="{{ fair.linkedin_url or '' }}" onchange="saveField('company_linkedin')">
+                </div>
+                <div class="mb-0">
+                  <label class="form-label small text-muted">Email</label>
+                  <input type="email" class="form-control form-control-sm" id="fairEmail" value="{{ fair.fair_email or '' }}" onchange="saveField('fair_email')">
+                </div>
+              </div>
+            </div>
+            
+            <div class="card mb-3">
+              <div class="card-header"><h5 class="mb-0"><i class="fas fa-tasks me-2"></i>Stato</h5></div>
+              <div class="card-body">
+                <select class="form-select" id="fairStatus" onchange="saveField('status')">
+                  <option value="in_valutazione" {% if fair.status == 'in_valutazione' %}selected{% endif %}>In Valutazione</option>
+                  <option value="approvata" {% if fair.status == 'approvata' %}selected{% endif %}>Approvata</option>
+                  <option value="in_gestione" {% if fair.status == 'in_gestione' %}selected{% endif %}>In Gestione</option>
+                  <option value="conclusa" {% if fair.status == 'conclusa' %}selected{% endif %}>Conclusa</option>
+                  <option value="rifiutata" {% if fair.status == 'rifiutata' %}selected{% endif %}>Rifiutata</option>
+                </select>
+              </div>
+            </div>
+            
+            <div class="card mb-3">
+              <div class="card-header"><h5 class="mb-0"><i class="fas fa-folder me-2"></i>Allegati</h5></div>
+              <div class="card-body">
+                {% if fair.attachments %}
+                  {% for att in fair.attachments %}
+                  <a href="{{ att.url }}" target="_blank" class="file-link"><i class="fas fa-file me-2"></i>{{ att.name }}</a>
+                  {% endfor %}
+                {% else %}
+                <p class="text-muted">Nessun allegato</p>
+                {% endif %}
+                <hr>
+                <div class="mb-2">
+                  <input type="file" class="form-control form-control-sm" id="uploadAttachment" multiple>
+                </div>
+                <button class="btn btn-sm btn-primary" onclick="uploadAttachment()"><i class="fas fa-upload me-1"></i>Carica</button>
+              </div>
+            </div>
+            
+            <div class="card mb-3">
+              <div class="card-header"><h5 class="mb-0"><i class="fas fa-user-friends me-2"></i>Contatti Commerciali</h5></div>
+              <div class="card-body">
+                <div class="row mb-2">
+                  <div class="col-4">
+                    <label class="small text-muted">Cold</label>
+                    <input type="number" class="form-control" id="contactCold" value="{{ fair.contacts.cold | default(0) }}">
+                  </div>
+                  <div class="col-4">
+                    <label class="small text-muted">Warm</label>
+                    <input type="number" class="form-control" id="contactWarm" value="{{ fair.contacts.warm | default(0) }}">
+                  </div>
+                  <div class="col-4">
+                    <label class="small text-muted">Hot</label>
+                    <input type="number" class="form-control" id="contactHot" value="{{ fair.contacts.hot | default(0) }}">
+                  </div>
+                </div>
+                <button class="btn btn-sm btn-primary" onclick="updateContacts()"><i class="fas fa-save me-1"></i>Salva</button>
+              </div>
+            </div>
+            
+            {% if fair.recommendation %}
+            <div class="card mb-3">
+              <div class="card-header"><h5 class="mb-0"><i class="fas fa-check-circle me-2"></i>Valutazione AI</h5></div>
+              <div class="card-body">
+                <div class="alert alert-{% if fair.recommendation == 'RECOMMENDED' %}success{% elif fair.recommendation == 'NOT RECOMMENDED' %}danger{% else %}warning{% endif %}">
+                  <h5>{{ fair.recommendation }}</h5>
+                  <p>{{ fair.rationale }}</p>
+                </div>
+              </div>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+        
+        <div id="message" class="mt-3"></div>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    const fairId = '{{ fair.id }}';
+    
+    function showMessage(msg, type = 'success') {
+      const el = document.getElementById('message');
+      el.innerHTML = '<div class="alert alert-' + type + '">' + msg + '</div>';
+      setTimeout(() => el.innerHTML = '', 3000);
+    }
+    
+    const fieldIdMap = {
+      'name': 'fairName',
+      'url': 'fairUrl',
+      'description': 'fairDescription',
+      'location': 'fairLocation',
+      'dates': 'fairDates',
+      'venue': 'fairVenue',
+      'address': 'fairAddress',
+      'organizer': 'fairOrganizer',
+      'sector': 'fairSector',
+      'frequency': 'fairFrequency',
+      'edition': 'fairEdition',
+      'expected_visitors': 'fairExpectedVisitors',
+      'exhibitors_count': 'fairExhibitorsCount',
+      'stand_cost': 'fairStandCost',
+      'exhibitor_countries': 'fairExhibitorCountries',
+      'visitor_profile': 'fairVisitorProfile',
+      'target_segments': 'fairTargetSegments',
+      'product_categories': 'fairProductCategories',
+      'key_features': 'fairKeyFeatures',
+      'company_website': 'fairSiteUrl',
+      'company_linkedin': 'fairLinkedin',
+      'fair_email': 'fairEmail',
+      'status': 'fairStatus'
+    };
+    
+    async function saveField(field) {
+      const elId = fieldIdMap[field] || 'fair' + field.charAt(0).toUpperCase() + field.slice(1);
+      const el = document.getElementById(elId);
+      if (!el) {
+        showMessage('Campo non trovato: ' + field, 'danger');
+        return;
+      }
+      let value = el.value;
+      if (field === 'dates' && value) value = [value];
+      if (field === 'expected_visitors' || field === 'exhibitors_count' || field === 'stand_cost') {
+        value = value ? parseInt(value) : 0;
+      }
+      try {
+        const resp = await fetch('/api/fairs/' + fairId, {
+          method: 'PUT',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({[field]: value})
+        });
+        if (resp.ok) {
+          el.classList.add('field-saved');
+          setTimeout(() => el.classList.remove('field-saved'), 500);
+        } else {
+          const err = await resp.json();
+          showMessage('Errore: ' + (err.detail || 'salvataggio fallito'), 'danger');
+        }
+      } catch (err) { showMessage('Errore: ' + err.message, 'danger'); }
+    }
+    
+    async function saveFieldJsonList(field) {
+      const elId = fieldIdMap[field] || 'fair' + field.charAt(0).toUpperCase() + field.slice(1);
+      const el = document.getElementById(elId);
+      if (!el) {
+        showMessage('Campo non trovato: ' + field, 'danger');
+        return;
+      }
+      const value = el.value ? el.value.split(',').map(s => s.trim()).filter(s => s) : null;
+      try {
+        const resp = await fetch('/api/fairs/' + fairId, {
+          method: 'PUT',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({[field]: value})
+        });
+        if (resp.ok) {
+          el.classList.add('field-saved');
+          setTimeout(() => el.classList.remove('field-saved'), 500);
+        } else {
+          const err = await resp.json();
+          showMessage('Errore: ' + (err.detail || 'salvataggio fallito'), 'danger');
+        }
+      } catch (err) { showMessage('Errore: ' + err.message, 'danger'); }
+    }
+    
+    async function updateContacts() {
+      const contacts = {
+        cold: parseInt(document.getElementById('contactCold').value) || 0,
+        warm: parseInt(document.getElementById('contactWarm').value) || 0,
+        hot: parseInt(document.getElementById('contactHot').value) || 0
+      };
+      await fetch('/api/fairs/' + fairId, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ contacts: contacts })
+      });
+      showMessage('Contatti salvati!');
+    }
+    
+    async function uploadAttachment() {
+      const input = document.getElementById('uploadAttachment');
+      if (!input.files.length) return;
+      for (const file of input.files) {
+        const fd = new FormData();
+        fd.append('file', file);
+        const resp = await fetch('/api/upload-pdf', { method: 'POST', body: fd });
+        const result = await resp.json();
+        const atts = {{ fair.attachments | tojson }} || [];
+        atts.push({name: file.name, url: result.file_path});
+        await fetch('/api/fairs/' + fairId, {
+          method: 'PUT',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ attachments: atts })
+        });
+      }
+      location.reload();
+    }
+    
+    async function analyzeFair() {
+      showMessage('Raccolta dati in corso...', 'info');
+      const resp = await fetch('/api/fairs/' + fairId + '/analyze', { method: 'POST' });
+      showMessage('Dati raccolti! Ricarica per vedere.', 'success');
+    }
+    
+    async function evaluateFair() {
+      showMessage('Valutazione in corso...', 'info');
+      const resp = await fetch('/api/fairs/' + fairId + '/evaluate', { method: 'POST' });
+      const result = await resp.json();
+      if (result.recommendation) showMessage('Valutazione completata!', 'success');
+      else if (result.detail) showMessage(result.detail, 'warning');
+      else showMessage('Errore valutazione', 'danger');
+      location.reload();
+    }
+    
+    async function deleteFair() {
+      if (!confirm('Eliminare questa fiera?')) return;
+      await fetch('/api/fairs/' + fairId, { method: 'DELETE' });
+      window.location.href = '/fairs';
+    }
+  </script>
+</body>
+</html>

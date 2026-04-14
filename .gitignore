@@ -1,0 +1,17 @@
+# Python
+venv/
+env/
+__pycache__/
+*.pyc
+
+# Data and reports (local only)
+data/
+data/fairs.db
+data/reports/
+
+# Logs
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db

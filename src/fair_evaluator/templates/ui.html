@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Valutatore di Fiere</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+  
+  <style>
+    :root { --primary: #0d6efd; --primary-dark: #0a58ca; --secondary: #6c757d; --success: #198754; --warning: #ffc107; --danger: #dc3545; --body-bg: #f0f2f5; }
+    * { box-sizing: border-box; }
+    body { font-family: 'Inter', sans-serif; background: var(--body-bg); min-height: 100vh; }
+    .navbar { background: linear-gradient(135deg, var(--primary) 0%, #0b5ed7 100%); box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+    .navbar-brand { font-weight: 600; letter-spacing: -0.5px; }
+    .navbar-nav .nav-link { font-weight: 500; transition: all 0.2s ease; border-radius: 8px; margin: 0 2px; }
+    .navbar-nav .nav-link:hover { background: rgba(255,255,255,0.15); }
+    .navbar-nav .nav-link.active { background: rgba(255,255,255,0.2); }
+    .card { border: none; border-radius: 16px; box-shadow: 0 0.125rem 0.25rem rgba(0,0,0,0.075); transition: all 0.2s ease; }
+    .card:hover { transform: translateY(-2px); box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+    .card-header { background: linear-gradient(135deg, var(--primary) 0%, #0b5ed7 100%); color: white; border-radius: 16px 16px 0 0 !important; border: none; padding: 1rem 1.5rem; }
+    .form-control, .form-select { border-radius: 10px; border: 2px solid #e9ecef; padding: 0.75rem 1rem; transition: all 0.2s ease; font-size: 0.95rem; }
+    .form-control:focus, .form-select:focus { border-color: var(--primary); box-shadow: 0 0 0 4px rgba(13, 110, 253, 0.15); }
+    .form-label { font-weight: 600; color: #212529; margin-bottom: 0.5rem; font-size: 0.9rem; }
+    .btn { border-radius: 10px; font-weight: 500; padding: 0.6rem 1.25rem; transition: all 0.2s ease; }
+    .btn-primary { background: linear-gradient(135deg, var(--primary) 0%, #0b5ed7 100%); border: none; }
+    .btn-primary:hover { background: linear-gradient(135deg, #0b5ed7 0%, #0a58ca 100%); transform: translateY(-1px); box-shadow: 0 4px 15px rgba(13, 110, 253, 0.3); }
+    .upload-area { border: 2px dashed #dee2e6; border-radius: 16px; padding: 2rem; text-align: center; transition: all 0.2s ease; cursor: pointer; background: #fafbfc; }
+    .upload-area:hover { border-color: var(--primary); background: #f0f7ff; }
+    .upload-area.dragover { border-color: var(--primary); background: #e7f1ff; }
+    .table { vertical-align: middle; }
+    .table thead th { border-bottom: 2px solid #dee2e6; font-weight: 600; color: #212529; text-transform: uppercase; font-size: 0.8rem; letter-spacing: 0.5px; }
+    .table-hover tbody tr:hover { background: #f8f9fa; }
+    .badge { padding: 0.5em 0.9em; font-weight: 500; border-radius: 20px; }
+    .status-pending { background: #fff3cd; color: #856404; }
+    .status-analizzata { background: #d1e7dd; color: #0f5132; }
+    .status-errore { background: #f8d7da; color: #842029; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .fade-in { animation: fadeIn 0.3s ease-out; }
+    .modal-content { border: none; border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); }
+    .modal-header { border-bottom: 1px solid #dee2e6; padding: 1.25rem 1.5rem; }
+    .modal-body { padding: 1.5rem; }
+    .footer { background: #212529; color: white; padding: 1.5rem 0; margin-top: 3rem; }
+    .ollama-status { padding: 0.5rem 1rem; border-radius: 8px; font-weight: 500; }
+    .ollama-online { background: #d1e7dd; color: #0f5132; }
+    .ollama-offline { background: #f8d7da; color: #842029; }
+    .stat-card { border-radius: 12px; padding: 1rem; text-align: center; }
+    .stat-number { font-size: 2rem; font-weight: 700; }
+    .stat-label { font-size: 0.85rem; color: #6c757d; }
+    @media (max-width: 768px) { .card { margin-bottom: 1rem; } }
+  </style>
+</head>
+<body>
+  <!-- Navbar -->
+  <nav class="navbar navbar-expand-lg navbar-dark sticky-top">
+    <div class="container-fluid px-4">
+      <a class="navbar-brand d-flex align-items-center" href="#">
+        <i class="fas fa-calendar-check me-2 fs-5"></i>
+        <span>Valutatore Fiere</span>
+      </a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav ms-auto">
+          <li class="nav-item">
+            <a class="nav-link active" href="#" onclick="showSection('home')">
+              <i class="fas fa-home me-2"></i>Home
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="#" onclick="showSection('fairs')">
+              <i class="fas fa-list me-2"></i>Fiere
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="#" onclick="showSettings()">
+              <i class="fas fa-cog me-2"></i>Impostazioni
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="#" onclick="showMaintenance()">
+              <i class="fas fa-tools me-2"></i>Manutenzione
+            </a>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container py-4">
+    <!-- Home Section -->
+    <div id="homeSection">
+      <!-- Stats -->
+      <div class="row mb-4" id="statsRow">
+        <div class="col-md-4">
+          <div class="stat-card bg-white">
+            <div class="stat-number text-primary" id="statTotal">0</div>
+            <div class="stat-label">Totale Fiere</div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="stat-card bg-white">
+            <div class="stat-number text-success" id="statAnalizzate">0</div>
+            <div class="stat-label">Analizzate</div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="stat-card bg-white">
+            <div class="stat-number text-warning" id="statPendenti">0</div>
+            <div class="stat-label">Pendenti</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        <!-- Form -->
+        <div class="col-lg-6 mb-4">
+          <div class="card">
+            <div class="card-header d-flex align-items-center">
+              <i class="fas fa-search me-2"></i>
+              <h5 class="mb-0">Nuova Valutazione</h5>
+            </div>
+            <div class="card-body">
+              <form id="scanForm">
+                <div class="mb-3">
+                  <label class="form-label"><i class="fas fa-link me-2 text-primary"></i>URL Fiera *</label>
+                  <input type="url" class="form-control" id="fair_url" placeholder="https://www.fieraesempio.it" required>
+                </div>
+                
+                <div class="mb-3">
+                  <label class="form-label"><i class="fas fa-globe me-2 text-success"></i>Sito Fiera</label>
+                  <input type="url" class="form-control" id="site_url" placeholder="https://www.fieraesempio.it">
+                </div>
+                
+                <div class="mb-3">
+                  <label class="form-label"><i class="fab fa-linkedin me-2 text-primary"></i>LinkedIn Organizzatore</label>
+                  <input type="url" class="form-control" id="linkedin_url" placeholder="https://linkedin.com/company/fiera">
+                </div>
+                
+                <div class="mb-4">
+                  <label class="form-label"><i class="fas fa-file-pdf me-2 text-danger"></i>PDF Marketing Fiera</label>
+                  <div class="upload-area" id="uploadArea">
+                    <i class="fas fa-cloud-upload-alt fa-2x text-muted mb-2"></i>
+                    <p class="mb-1 text-muted">Trascina il file PDF qui oppure</p>
+                    <label class="btn btn-outline-primary btn-sm mb-0">
+                      <i class="fas fa-folder-open me-1"></i>Seleziona file
+                      <input type="file" id="pdfFile" accept=".pdf" style="display:none">
+                    </label>
+                    <div id="fileName" class="mt-2 text-success small"></div>
+                  </div>
+                  <input type="hidden" id="marketing_pdf">
+                </div>
+                
+                <div class="d-flex gap-2">
+                  <button type="button" class="btn btn-outline-secondary" onclick="resetForm()">
+                    <i class="fas fa-redo me-1"></i>Reset
+                  </button>
+                  <button type="submit" class="btn btn-primary flex-grow-1">
+                    <i class="fas fa-rocket me-2"></i>Analizza
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Result -->
+        <div class="col-lg-6 mb-4">
+          <div class="card" id="resultCard" style="display: none;">
+            <div class="card-header d-flex justify-content-between align-items-center">
+              <div class="d-flex align-items-center">
+                <i class="fas fa-chart-line me-2"></i>
+                <h5 class="mb-0">Risultato</h5>
+              </div>
+              <span class="badge bg-light text-dark" id="statusBadge"></span>
+            </div>
+            <div class="card-body">
+              <div id="loadingSpinner" class="text-center py-4" style="display: none;">
+                <div class="spinner-border text-primary mb-2"></div>
+                <p class="text-muted">Elaborazione in corso...</p>
+              </div>
+              
+              <div id="resultContent" class="fade-in">
+                <div class="d-flex align-items-center mb-3">
+                  <div class="bg-success bg-opacity-10 rounded-circle p-2 me-3">
+                    <i class="fas fa-check text-success fs-4"></i>
+                  </div>
+                  <div>
+                    <h6 class="mb-0">Fiera Creata</h6>
+                    <small class="text-muted" id="resultTimestamp"></small>
+                  </div>
+                </div>
+                
+                <div class="bg-light rounded p-3 mb-3">
+                  <div class="row">
+                    <div class="col-6 mb-2">
+                      <small class="text-muted">ID</small>
+                      <div class="fw-bold" id="resultId"></div>
+                    </div>
+                    <div class="col-6 mb-2">
+                      <small class="text-muted">Nome</small>
+                      <div class="fw-bold" id="resultName"></div>
+                    </div>
+                    <div class="col-12">
+                      <small class="text-muted">URL</small>
+                      <div class="text-truncate" id="resultUrl"></div>
+                    </div>
+                  </div>
+                </div>
+                
+                <div class="d-flex gap-2 flex-wrap">
+                  <button class="btn btn-outline-primary btn-sm" onclick="viewDetails()">
+                    <i class="fas fa-eye me-1"></i>Dettagli
+                  </button>
+                  <button class="btn btn-outline-success btn-sm" onclick="analyzeFair()">
+                    <i class="fas fa-search me-1"></i>Analizza
+                  </button>
+                  <button class="btn btn-outline-warning btn-sm" onclick="generateReport()">
+                    <i class="fas fa-file-download me-1"></i>Report
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="card" id="emptyState">
+            <div class="card-body text-center py-5">
+              <i class="fas fa-rocket fa-3x text-muted mb-3"></i>
+              <h5>Nessuna valutazione</h5>
+              <p class="text-muted">Inserisci i dati per iniziare</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fairs List Section -->
+    <div id="fairsSection" style="display: none;">
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <div class="d-flex align-items-center">
+            <i class="fas fa-list me-2"></i>
+            <h5 class="mb-0">Le Tue Fiere</h5>
+          </div>
+          <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-outline-success" onclick="showImportModal()">
+              <i class="fas fa-file-import me-1"></i>Import
+            </button>
+            <button class="btn btn-sm btn-outline-primary" onclick="exportFairs()">
+              <i class="fas fa-file-export me-1"></i>Export
+            </button>
+            <button class="btn btn-sm btn-light" onclick="loadFairs()">
+              <i class="fas fa-sync-alt me-1"></i>Aggiorna
+            </button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="table-responsive">
+            <table class="table table-hover" id="fairsTable">
+              <thead>
+                <tr>
+                  <th><i class="fas fa-hashtag me-1"></i>ID</th>
+                  <th><i class="fas fa-tag me-1"></i>Nome</th>
+                  <th><i class="fas fa-link me-1"></i>URL</th>
+                  <th><i class="fas fa-file-pdf me-1"></i>PDF</th>
+                  <th><i class="fas fa-info-circle me-1"></i>Stato</th>
+                  <th><i class="fas fa-cogs me-1"></i>Azioni</th>
+                </tr>
+              </thead>
+              <tbody id="fairsTableBody">
+                <tr><td colspan="6" class="text-center text-muted py-4">Nessuna fiera presente</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container text-center">
+      <small>
+        <i class="fas fa-code me-1"></i>Valutatore Fiere v1.0
+        <span class="mx-2">|</span>
+        <i class="fas fa-server me-1"></i>FastAPI + Python
+        <span class="mx-2">|</span>
+        <i class="fas fa-brain me-1"></i>Ollama
+      </small>
+    </div>
+  </footer>
+
+  <!-- Settings Modal -->
+  <div class="modal fade" id="settingsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="fas fa-cog me-2"></i>Impostazioni</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <!-- Ollama Status -->
+          <div class="mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <label class="form-label mb-0"><i class="fas fa-robot me-2 text-primary"></i>Stato Ollama</label>
+              <span id="ollamaStatusBadge" class="ollama-status">Caricamento...</span>
+            </div>
+          </div>
+          
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label">URL Ollama</label>
+              <div class="input-group">
+                <span class="input-group-text"><i class="fas fa-link"></i></span>
+                <input type="text" class="form-control" id="settings_ollama_url" placeholder="http://localhost:11434">
+              </div>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Modello</label>
+              <select class="form-select" id="settings_ollama_model">
+                <option value="llama3.2">llama3.2</option>
+                <option value="llama3.1">llama3.1</option>
+                <option value="mistral">mistral</option>
+              </select>
+            </div>
+          </div>
+          
+          <hr>
+          
+          <div class="mb-3">
+            <label class="form-label"><i class="fas fa-folder me-2 text-warning"></i>Cartella PDF predefinita</label>
+            <input type="text" class="form-control" id="settings_pdf_folder" placeholder="C:\Documenti\Fiere">
+          </div>
+          
+          <hr>
+          
+          <div class="mb-3">
+            <label class="form-label"><i class="fas fa-file-pdf me-2 text-danger"></i>Strategia Marketing Aziendale</label>
+            <div class="upload-area" id="strategyUploadArea">
+              <i class="fas fa-file-pdf fa-2x text-muted mb-2"></i>
+              <p class="mb-1 text-muted">Carica la strategia marketing aziendale (PDF)</p>
+              <label class="btn btn-outline-primary btn-sm mb-0">
+                <i class="fas fa-upload me-1"></i>Carica
+                <input type="file" id="strategyFile" accept=".pdf" style="display:none">
+              </label>
+              <div id="strategyFileName" class="mt-2 text-success small"></div>
+            </div>
+          </div>
+          
+          <button class="btn btn-primary w-100" onclick="saveSettings()">
+            <i class="fas fa-save me-2"></i>Salva Impostazioni
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Maintenance Modal -->
+  <div class="modal fade" id="maintenanceModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="fas fa-tools me-2"></i>Manutenzione Database</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-4">
+            <h6>Statistiche Database</h6>
+            <div class="row text-center">
+              <div class="col-4">
+                <div class="stat-number text-primary" id="dbTotal">0</div>
+                <div class="stat-label">Totale</div>
+              </div>
+              <div class="col-4">
+                <div class="stat-number text-success" id="dbAnalizzate">0</div>
+                <div class="stat-label">Analizzate</div>
+              </div>
+              <div class="col-4">
+                <div class="stat-number text-warning" id="dbPendenti">0</div>
+                <div class="stat-label">Pendenti</div>
+              </div>
+            </div>
+          </div>
+          
+          <hr>
+          
+          <div class="d-grid gap-2">
+            <button class="btn btn-warning" onclick="clearDatabase()">
+              <i class="fas fa-trash me-2"></i>Svuota Database
+            </button>
+            <button class="btn btn-success" onclick="showImportModal()">
+              <i class="fas fa-file-import me-2"></i>Importa da Excel
+            </button>
+            <button class="btn btn-primary" onclick="exportFairs()">
+              <i class="fas fa-file-export me-2"></i>Esporta in Excel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Import Modal -->
+  <div class="modal fade" id="importModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="fas fa-file-import me-2"></i>Importa Fiere</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label"><i class="fas fa-file-excel me-2 text-success"></i>Seleziona file Excel</label>
+            <div class="upload-area" id="importUploadArea">
+              <i class="fas fa-file-excel fa-2x text-muted mb-2"></i>
+              <p class="mb-1 text-muted">Trascina il file Excel qui oppure</p>
+              <label class="btn btn-outline-success btn-sm mb-0">
+                <i class="fas fa-folder-open me-1"></i>Seleziona
+                <input type="file" id="importFile" accept=".xlsx,.xls" style="display:none">
+              </label>
+              <div id="importFileName" class="mt-2 text-success small"></div>
+            </div>
+          </div>
+          <button class="btn btn-success w-100" onclick="importFairs()">
+            <i class="fas fa-file-import me-2"></i>Importa
+          </button>
+          <div id="importResult" class="mt-3"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    let currentFairId = null;
+    
+    // Init
+    document.addEventListener('DOMContentLoaded', function() {
+      loadStats();
+      loadSettings();
+    });
+    
+    // Navigation
+    function showSection(section) {
+      document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active'));
+      event?.target?.classList.add('active');
+      
+      if (section === 'home') {
+        document.getElementById('homeSection').style.display = 'block';
+        document.getElementById('fairsSection').style.display = 'none';
+        loadStats();
+      } else if (section === 'fairs') {
+        document.getElementById('homeSection').style.display = 'none';
+        document.getElementById('fairsSection').style.display = 'block';
+        loadFairs();
+      }
+    }
+    
+    // Stats
+    async function loadStats() {
+      try {
+        const resp = await fetch('/db/stats');
+        const data = await resp.json();
+        document.getElementById('statTotal').textContent = data.total;
+        document.getElementById('statAnalizzate').textContent = data.analizzate;
+        document.getElementById('statPendenti').textContent = data.pendenti;
+        document.getElementById('dbTotal').textContent = data.total;
+        document.getElementById('dbAnalizzate').textContent = data.analizzate;
+        document.getElementById('dbPendenti').textContent = data.pendenti;
+      } catch (e) { console.error(e); }
+    }
+    
+    // Settings
+    async function loadSettings() {
+      try {
+        const resp = await fetch('/settings');
+        const data = await resp.json();
+        document.getElementById('settings_ollama_url').value = data.ollama_url || '';
+        document.getElementById('settings_ollama_model').value = data.ollama_model || 'llama3.2';
+        document.getElementById('settings_pdf_folder').value = data.pdf_folder || '';
+        if (data.strategy_pdf) {
+          document.getElementById('strategyFileName').innerHTML = '<i class="fas fa-check"></i> File caricato';
+        }
+      } catch (e) { console.error(e); }
+      
+      // Check Ollama status
+      try {
+        const resp = await fetch('/settings/ollama-status');
+        const data = await resp.json();
+        const badge = document.getElementById('ollamaStatusBadge');
+        if (data.status === 'online') {
+          badge.className = 'ollama-status ollama-online';
+          badge.innerHTML = '<i class="fas fa-check-circle me-1"></i> Online';
+        } else {
+          badge.className = 'ollama-status ollama-offline';
+          badge.innerHTML = '<i class="fas fa-times-circle me-1"></i> Offline';
+        }
+      } catch (e) {
+        document.getElementById('ollamaStatusBadge').className = 'ollama-status ollama-offline';
+        document.getElementById('ollamaStatusBadge').innerHTML = '<i class="fas fa-times-circle me-1"></i> Offline';
+      }
+    }
+    
+    async function saveSettings() {
+      const payload = {
+        ollama_url: document.getElementById('settings_ollama_url').value,
+        ollama_model: document.getElementById('settings_ollama_model').value,
+        pdf_folder: document.getElementById('settings_pdf_folder').value
+      };
+      try {
+        await fetch('/settings', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+        alert('Impostazioni salvate!');
+        bootstrap.Modal.getInstance(document.getElementById('settingsModal')).hide();
+        loadSettings();
+      } catch (e) { alert('Errore: ' + e.message); }
+    }
+    
+    function showSettings() { new bootstrap.Modal(document.getElementById('settingsModal')).show(); loadSettings(); }
+    function showMaintenance() { new bootstrap.Modal(document.getElementById('maintenanceModal')).show(); loadStats(); }
+    function showImportModal() { new bootstrap.Modal(document.getElementById('importModal')).show(); }
+    
+    // File Upload - PDF for Fair
+    const uploadArea = document.getElementById('uploadArea');
+    const pdfFile = document.getElementById('pdfFile');
+    uploadArea.addEventListener('click', () => pdfFile.click());
+    uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('dragover'); });
+    uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+    uploadArea.addEventListener('drop', async (e) => { e.preventDefault(); uploadArea.classList.remove('dragover'); if (e.dataTransfer.files[0]) await uploadFile(e.dataTransfer.files[0]); });
+    pdfFile.addEventListener('change', async (e) => { if (e.target.files[0]) await uploadFile(e.target.files[0]); });
+    
+    async function uploadFile(file) {
+      if (!file.name.endsWith('.pdf')) { alert('Solo file PDF'); return; }
+      const formData = new FormData();
+      formData.append('file', file);
+      try {
+        const resp = await fetch('/upload-pdf', { method: 'POST', body: formData });
+        const data = await resp.json();
+        document.getElementById('marketing_pdf').value = data.file_path;
+        document.getElementById('fileName').innerHTML = '<i class="fas fa-check-circle"></i> ' + file.name;
+      } catch (err) { alert('Errore upload: ' + err.message); }
+    }
+    
+    // Strategy PDF Upload
+    const strategyArea = document.getElementById('strategyUploadArea');
+    const strategyFile = document.getElementById('strategyFile');
+    strategyArea.addEventListener('click', () => strategyFile.click());
+    strategyFile.addEventListener('change', async (e) => {
+      if (e.target.files[0]) {
+        const formData = new FormData();
+        formData.append('file', e.target.files[0]);
+        try {
+          await fetch('/upload-strategy', { method: 'POST', body: formData });
+          document.getElementById('strategyFileName').innerHTML = '<i class="fas fa-check"></i> ' + e.target.files[0].name;
+          alert('Strategia caricata!');
+        } catch (err) { alert('Errore: ' + err.message); }
+      }
+    });
+    
+    // Import Excel
+    const importArea = document.getElementById('importUploadArea');
+    const importFileEl = document.getElementById('importFile');
+    importArea.addEventListener('click', () => importFileEl.click());
+    importFileEl.addEventListener('change', (e) => { if (e.target.files[0]) document.getElementById('importFileName').innerHTML = '<i class="fas fa-check"></i> ' + e.target.files[0].name; });
+    
+    async function importFairs() {
+      const file = document.getElementById('importFile').files[0];
+      if (!file) return alert('Seleziona un file');
+      const formData = new FormData();
+      formData.append('file', file);
+      try {
+        const resp = await fetch('/import-excel-upload', { method: 'POST', body: formData });
+        const data = await resp.json();
+        document.getElementById('importResult').innerHTML = data.status === 'success' 
+          ? '<div class="alert alert-success"><i class="fas fa-check"></i> Importate ' + data.count + ' fiere</div>'
+          : '<div class="alert alert-danger">' + data.message + '</div>';
+        loadStats();
+      } catch (err) { document.getElementById('importResult').innerHTML = '<div class="alert alert-danger">' + err.message + '</div>'; }
+    }
+    
+    async function exportFairs() {
+      window.location.href = '/export-excel';
+    }
+    
+    async function clearDatabase() {
+      if (!confirm('Sicuro di voler eliminare tutte le fiere?')) return;
+      try {
+        await fetch('/db/clear', { method: 'POST' });
+        alert('Database svuotato!');
+        loadStats();
+        bootstrap.Modal.getInstance(document.getElementById('maintenanceModal')).hide();
+      } catch (err) { alert('Errore: ' + err.message); }
+    }
+    
+    // Form Submit
+    document.getElementById('scanForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const payload = {
+        fair_url: document.getElementById('fair_url').value,
+        site_url: document.getElementById('site_url').value || document.getElementById('fair_url').value,
+        linkedin_url: document.getElementById('linkedin_url').value,
+        marketing_pdf: document.getElementById('marketing_pdf').value
+      };
+      
+      document.getElementById('emptyState').style.display = 'none';
+      document.getElementById('resultCard').style.display = 'block';
+      document.getElementById('loadingSpinner').style.display = 'block';
+      document.getElementById('resultContent').style.display = 'none';
+      
+      try {
+        const resp = await fetch('/fairs', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+        const data = await resp.json();
+        
+        document.getElementById('loadingSpinner').style.display = 'none';
+        document.getElementById('resultContent').style.display = 'block';
+        document.getElementById('resultId').textContent = data.id?.substring(0, 8) + '...';
+        document.getElementById('resultName').textContent = data.name;
+        document.getElementById('resultUrl').textContent = payload.fair_url;
+        document.getElementById('resultTimestamp').textContent = new Date().toLocaleString();
+        document.getElementById('statusBadge').innerHTML = '<i class="fas fa-check"></i> Creata';
+        currentFairId = data.id;
+        loadStats();
+      } catch (err) { alert('Errore: ' + err.message); }
+    });
+    
+    function resetForm() {
+      document.getElementById('scanForm').reset();
+      document.getElementById('resultCard').style.display = 'none';
+      document.getElementById('emptyState').style.display = 'block';
+      document.getElementById('fileName').innerHTML = '';
+      document.getElementById('marketing_pdf').value = '';
+      currentFairId = null;
+    }
+    
+    function viewDetails() { if (currentFairId) window.location.href = '/fairs/' + currentFairId; }
+    
+    async function analyzeFair() {
+      if (!currentFairId) return;
+      try {
+        await fetch('/fairs/' + currentFairId + '/analyze', { method: 'POST' });
+        alert('Analisi completata!');
+      } catch (err) { alert('Errore: ' + err.message); }
+    }
+    
+    async function generateReport() {
+      if (!currentFairId) return;
+      try {
+        const resp = await fetch('/fairs/' + currentFairId + '/report', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({format: 'html'}) });
+        const data = await resp.json();
+        alert('Report generato!');
+      } catch (err) { alert('Errore: ' + err.message); }
+    }
+    
+    // Fairs List
+    async function loadFairs() {
+      try {
+        const resp = await fetch('/fairs');
+        const fairs = await resp.json();
+        const tbody = document.getElementById('fairsTableBody');
+        if (fairs.length === 0) { tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">Nessuna fiera</td></tr>'; return; }
+        tbody.innerHTML = fairs.map(f => '<tr><td><code>' + (f.id?.substring(0, 8) || '-') + '</code></td><td>' + (f.name || '-') + '</td><td><small>' + (f.url || '-') + '</small></td><td>' + (f.marketing_pdf ? '<i class="fas fa-check text-success"></i>' : '-') + '</td><td><span class="badge ' + (f.status === 'analizzata' ? 'status-analizzata' : 'status-pending') + '">' + f.status + '</span></td><td><button class="btn btn-sm btn-outline-primary" onclick="viewFair(\'' + f.id + '\')"><i class="fas fa-eye"></i></button><button class="btn btn-sm btn-outline-danger" onclick="deleteFair(\'' + f.id + '\')"><i class="fas fa-trash"></i></button></td></tr>').join('');
+      } catch (err) { console.error(err); }
+    }
+    
+    function viewFair(id) { window.location.href = '/fairs/' + id; }
+    
+    async function deleteFair(id) {
+      if (!confirm('Eliminare questa fiera?')) return;
+      try { await fetch('/fairs/' + id, { method: 'DELETE' }); loadFairs(); loadStats(); } catch (err) { alert('Errore: ' + err.message); }
+    }
+  </script>
+</body>
+</html>

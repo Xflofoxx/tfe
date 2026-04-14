@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Impostazioni - Valutatore Fiere</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+    .sidebar { background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%); min-height: 100vh; }
+    .nav-link { color: #94a3b8; padding: 12px 20px; border-radius: 8px; margin: 2px 8px; transition: all 0.2s; }
+    .nav-link:hover, .nav-link.active { background: #334155; color: #fff; }
+    .card { border: none; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .ollama-status { padding: 8px 16px; border-radius: 8px; font-weight: 500; }
+    .ollama-online { background: #d1fae5; color: #065f46; }
+    .ollama-offline { background: #fee2e2; color: #991b1b; }
+  </style>
+</head>
+<body>
+  <div class="container-fluid">
+    <div class="row">
+      <div class="col-md-2 sidebar p-0">
+        <div class="p-3 text-white border-bottom border-secondary">
+          <h5 class="mb-0"><i class="fas fa-clipboard-check me-2"></i>Valutatore Fiere</h5>
+        </div>
+        <nav class="nav flex-column mt-2">
+          <a class="nav-link" href="/"><i class="fas fa-home me-2"></i>Home</a>
+          <a class="nav-link" href="/fairs"><i class="fas fa-building me-2"></i>Fiere</a>
+          <a class="nav-link" href="/fairs/new"><i class="fas fa-plus me-2"></i>Nuova Fiera</a>
+          <a class="nav-link active" href="/settings"><i class="fas fa-cog me-2"></i>Impostazioni</a>
+          <a class="nav-link" href="/maintenance"><i class="fas fa-database me-2"></i>Manutenzione</a>
+        </nav>
+      </div>
+      <div class="col-md-10 p-4">
+        <h3 class="mb-4"><i class="fas fa-cog me-2"></i>Impostazioni</h3>
+        <div class="row">
+          <div class="col-md-6">
+            <div class="card mb-4">
+              <div class="card-header"><h5 class="mb-0">Configurazione Ollama</h5></div>
+              <div class="card-body">
+                <div class="mb-3">
+                  <label class="form-label">URL Ollama</label>
+                  <input type="text" class="form-control" id="ollamaUrl" value="{{ settings.ollama_url }}">
+                </div>
+                <div class="mb-3">
+                  <label class="form-label">Modello</label>
+                  <select class="form-select" id="ollamaModel" onchange="onModelChange()">
+                    <option value="">Seleziona modello...</option>
+                    {% for model in ollama.available_models %}
+                    <option value="{{ model }}" {% if settings.ollama_model == model %}selected{% endif %}>{{ model }}</option>
+                    {% endfor %}
+                    <option value="custom" {% if settings.ollama_model and settings.ollama_model not in ollama.available_models %}selected{% endif %}>Altro (inserisci manualmente)</option>
+                  </select>
+                </div>
+                <div class="mb-3" id="customModelDiv" {% if settings.ollama_model and settings.ollama_model in ollama.available_models %}style="display:none"{% endif %}>
+                  <label class="form-label">Modello Personalizzato</label>
+                  <input type="text" class="form-control" id="ollamaModelCustom" value="{% if settings.ollama_model and settings.ollama_model not in ollama.available_models %}{{ settings.ollama_model }}{% endif %}" placeholder="es: llama3.2">
+                </div>
+                <div class="mb-3">
+                  <label class="form-label">Stato Ollama</label>
+                  <div>
+                    <span class="ollama-status {% if ollama.status == 'online' %}ollama-online{% else %}ollama-offline{% endif %}">
+                      <i class="fas fa-circle me-2"></i>{{ ollama.status.upper() }}
+                    </span>
+                  </div>
+                </div>
+                <button class="btn btn-primary" onclick="saveSettings()"><i class="fas fa-save me-2"></i>Salva Impostazioni</button>
+                <button class="btn btn-secondary" onclick="checkOllama()"><i class="fas fa-sync me-2"></i>Verifica</button>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="card mb-4">
+              <div class="card-header"><h5 class="mb-0"><i class="fas fa-brain me-2"></i>Strategia Marketing</h5></div>
+              <div class="card-body">
+                <p class="text-muted small">Inserisci il prompt della strategia marketing che verrà usato come contesto per analizzare le fiere con l'AI. Puoi anche generarlo dalla pagina Manutenzione.</p>
+                <div class="mb-3">
+                  <label class="form-label">Prompt Strategia</label>
+                  <textarea class="form-control" id="strategyPrompt" rows="8" placeholder="Es: La nostra azienda è orientata al settore tecnologia B2B, cerchiamo fiere con minimo 5000 visitatori, budget massimo 15000 euro, target CEO e CTO...">{{ settings.strategy_prompt }}</textarea>
+                </div>
+                <button class="btn btn-primary" onclick="saveSettings()"><i class="fas fa-save me-2"></i>Salva Strategia</button>
+                <button class="btn btn-outline-secondary" onclick="loadPrompt()"><i class="fas fa-file-import me-2"></i>Carica da File</button>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-header"><h5 class="mb-0">Import/Export</h5></div>
+              <div class="card-body">
+                <a href="/api/export-excel" class="btn btn-success mb-2"><i class="fas fa-file-excel me-2"></i>Esporta Excel</a>
+                <form id="importForm" class="d-inline">
+                  <label class="btn btn-warning mb-2" style="cursor:pointer">
+                    <i class="fas fa-file-import me-2"></i>Importa Excel
+                    <input type="file" id="importFile" accept=".xlsx" style="display:none">
+                  </label>
+                </form>
+                <div id="importMessage" class="mt-2"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="message" class="mt-3"></div>
+      </div>
+    </div>
+  </div>
+  <script>
+    async function saveSettings() {
+      try {
+        const select = document.getElementById('ollamaModel');
+        let model = select.value;
+        if (model === 'custom') {
+          model = document.getElementById('ollamaModelCustom').value;
+        }
+        const resp = await fetch('/api/settings', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            ollama_url: document.getElementById('ollamaUrl').value,
+            ollama_model: model,
+            strategy_prompt: document.getElementById('strategyPrompt').value
+          })
+        });
+        if (resp.ok) {
+          document.getElementById('message').innerHTML = '<div class="alert alert-success">Impostazioni salvate!</div>';
+        }
+      } catch (err) {
+        document.getElementById('message').innerHTML = '<div class="alert alert-danger">Errore: ' + err.message + '</div>';
+      }
+    }
+    async function checkOllama() {
+      location.reload();
+    }
+    function onModelChange() {
+      const select = document.getElementById('ollamaModel');
+      const customDiv = document.getElementById('customModelDiv');
+      if (select.value === 'custom') {
+        customDiv.style.display = 'block';
+      } else {
+        customDiv.style.display = 'none';
+      }
+    }
+    async function loadPrompt() {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.txt,.md';
+      input.onchange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const text = await file.text();
+        document.getElementById('strategyPrompt').value = text;
+        document.getElementById('message').innerHTML = '<div class="alert alert-info">Contenuto caricato! Salva per applicare.</div>';
+      };
+      input.click();
+    }
+    document.getElementById('importFile').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const formData = new FormData();
+      formData.append('file', file);
+      const resp = await fetch('/api/import-excel-upload', { method: 'POST', body: formData });
+      const result = await resp.json();
+      if (resp.ok) {
+        document.getElementById('importMessage').innerHTML = '<div class="alert alert-success">Importate ' + result.count + ' fiere!</div>';
+      } else {
+        document.getElementById('importMessage').innerHTML = '<div class="alert alert-danger">Errore: ' + result.message + '</div>';
+      }
+    });
+  </script>
+</body>
+</html>

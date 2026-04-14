@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Scheda Fiera - Report</title>
+  <style>
+    body { font-family: sans-serif; padding: 2rem; }
+    h1 { font-size: 1.6rem; }
+    section { margin-bottom: 1.2rem; }
+    .kpi { font-weight: bold; }
+  </style>
+  </head>
+  <body>
+  <h1>Scheda Fiera</h1>
+  {% if fair %}
+  <section>
+    <h2>{{ fair.name or 'Fiera' }}</h2>
+    <p>Date/Location: {{ (fair.dates or [])|join(', ') }} {{ fair.location or '' }}</p>
+    <p>URL: <a href="{{ fair.url or '#' }}">{{ fair.url or '#' }}</a></p>
+  </section>
+  <section>
+    <h3>Analisi</h3>
+    <p><span class="kpi">Raccomandazione:</span> {{ fair.recommendation or 'Non disponibile' }}</p>
+    <p><span class="kpi">Razionale:</span> {{ fair.rationale or 'Non disponibile' }}</p>
+  </section>
+  <section>
+    <h3>Costi stimati</h3>
+    <pre>{{ fair.cost_estimate or '' }}</pre>
+  </section>
+  {% else %}
+  <p>Nessuna scheda disponibile.</p>
+  {% endif %}
+  </body>
+</html>

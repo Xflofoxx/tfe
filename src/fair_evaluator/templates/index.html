@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Valutatore di Fiere - Interfaccia</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 2rem; }
+    label { display: block; margin-top: 0.5rem; }
+    input { width: 100%; padding: 0.4rem; margin-top: 0.2rem; }
+    button { margin-top: 1rem; padding: 0.5rem 1rem; }
+  </style>
+</head>
+<body>
+  <h1>Valutatore di Fiere</h1>
+  <form id="scanForm">
+    <label>URL Fiera
+      <input type="url" id="fair_url" required />
+    </label>
+    <label>PDF Marketing Strategy (path locale)
+      <input type="text" id="marketing_pdf" />
+    </label>
+    <label>Sito Fiera
+      <input type="url" id="site_url" />
+    </label>
+    <label>LinkedIn Organizzatore
+      <input type="url" id="linkedin_url" />
+    </label>
+    <button type="submit">Analizza</button>
+  </form>
+  <div id="result" style="margin-top:1rem;"></div>
+  <script>
+    const form = document.getElementById('scanForm');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const payload = {
+        fair_url: document.getElementById('fair_url').value,
+        marketing_pdf: document.getElementById('marketing_pdf').value,
+        site_url: document.getElementById('site_url').value,
+        linkedin_url: document.getElementById('linkedin_url').value
+      };
+      try {
+        const resp = await fetch('/fair-scan', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload)
+        });
+        const data = await resp.json();
+        document.getElementById('result').innerText = JSON.stringify(data, null, 2);
+      } catch (err) {
+        document.getElementById('result').innerText = 'Errore durante l\'analisi.';
+      }
+    });
+  </script>
+</body>
+</html>
