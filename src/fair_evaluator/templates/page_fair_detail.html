@@ -389,6 +389,9 @@
       
       showMessage('Raccolta dati in corso...', 'info');
       
+      const logContainer = document.getElementById('scrapeLogs') || createLogContainer();
+      logContainer.innerHTML = '';
+      
       try {
         const resp = await fetch('/api/scrape-url', {
           method: 'POST',
@@ -397,6 +400,13 @@
         });
         
         const data = await resp.json();
+        
+        if (data.logs) {
+          for (const log of data.logs) {
+            const cls = log.status === 'ok' ? 'text-success' : log.status === 'warning' ? 'text-warning' : 'text-danger';
+            logContainer.innerHTML += `<div class="${cls} small"><i class="fas fa-${log.status === 'ok' ? 'check' : log.status === 'warning' ? 'exclamation' : 'times'}"></i> [${log.step}] ${log.message}</div>`;
+          }
+        }
         
         if (data.error) {
           showMessage('Errore scraping: ' + data.error, 'danger');
@@ -424,11 +434,38 @@
           saveField('description');
         }
         
-        showMessage('Dati raccolti e salvati!', 'success');
+        logContainer.innerHTML += '<div class="text-info small"><i class="fas fa-arrow-right"></i> [ALLEGATI] Analizzo allegati...</div>';
+        
+        try {
+          const analyzeResp = await fetch('/api/fairs/' + fairId + '/analyze', { method: 'POST' });
+          const analyzeData = await analyzeResp.json();
+          if (analyzeData.logs) {
+            for (const log of analyzeData.logs) {
+              const cls = log.status === 'ok' ? 'text-success' : log.status === 'warning' ? 'text-warning' : 'text-danger';
+              logContainer.innerHTML += `<div class="${cls} small"><i class="fas fa-${log.status === 'ok' ? 'check' : log.status === 'warning' ? 'exclamation' : 'times'}"></i> [${log.step}] ${log.message}</div>`;
+            }
+          }
+        } catch (e) {
+          logContainer.innerHTML += `<div class="text-danger small"><i class="fas fa-times"></i> [ERROR] ${e.message}</div>`;
+        }
+        
+        showMessage('Dati raccolti da web e allegati!', 'success');
         
       } catch (err) {
         showMessage('Errore: ' + err.message, 'danger');
       }
+    }
+    
+    function createLogContainer() {
+      const div = document.createElement('div');
+      div.id = 'scrapeLogs';
+      div.className = 'small p-2 bg-dark text-light rounded';
+      div.style.maxHeight = '300px';
+      div.style.overflowY = 'auto';
+      div.style.fontSize = '11px';
+      const msg = document.getElementById('message');
+      msg.parentNode.insertBefore(div, msg.nextSibling);
+      return div;
     }
     
     async function evaluateFair() {

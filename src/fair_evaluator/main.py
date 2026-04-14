@@ -274,76 +274,161 @@ def scrape_url(url_data: dict, db: Session = Depends(get_db)):
     if not url:
         raise HTTPException(status_code=400, detail="URL required")
 
-    settings = db.query(Settings).first()
-    if not settings:
-        settings = Settings()
+    result = {
+        "url": url,
+        "title": "",
+        "description": "",
+        "text_content": "",
+        "error": "",
+        "ai_data": None,
+        "logs": []
+    }
 
-    result = {"url": url, "text_content": "", "error": "", "ai_data": None}
+    import re
+    from datetime import datetime
 
     try:
+        result["logs"].append({"step": "START", "message": f"Inizio raccolta dati da {url}", "status": "ok"})
+
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Accept-Language': 'en-US,en;q=0.9,it-IT;q=0.8,it;q=0.7'
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept-Language": "en-US,en;q=0.9,it-IT;q=0.8,it;q=0.7",
         }
         resp = requests.get(url, timeout=15, verify=False, headers=headers, allow_redirects=True)
+        result["logs"].append({"step": "HTTP_GET", "message": f"Richiesta HTTP: status {resp.status_code}", "status": "ok" if resp.status_code == 200 else "warning"})
+
         html_content = resp.text
-
         if not html_content:
-            result["error"] = "No content from requests"
-        else:
-            from bs4 import BeautifulSoup
-            soup = BeautifulSoup(html_content, "html.parser")
+            result["error"] = "No content"
+            result["logs"].append({"step": "HTTP_ERROR", "message": "Nessun contenuto ricevuto", "status": "error"})
+            return result
 
-            title = soup.find('title')
-            result["title"] = title.text.strip() if title else ""
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(html_content, "html.parser")
 
-            meta_desc = soup.find('meta', attrs={'name': 'description'})
-            result["description"] = meta_desc.get('content', '') if meta_desc else ""
+        title = soup.find("title")
+        result["title"] = title.text.strip() if title else ""
+        if result["title"]:
+            result["logs"].append({"step": "TITLE", "message": f"Titolo: {result['title'][:50]}", "status": "ok"})
 
-            for script in soup(["script", "style", "nav", "footer", "header"]):
-                script.decompose()
+        meta_desc = soup.find("meta", attrs={"name": "description"})
+        result["description"] = meta_desc.get("content", "") if meta_desc else ""
+        if result["description"]:
+            result["logs"].append({"step": "META_DESC", "message": "Meta description estratta", "status": "ok"})
 
-            text_content = soup.get_text(separator=' ', strip=True)
-            text_content = ' '.join(text_content.split())
-            result["text_content"] = text_content[:3000]
-            result["text_length"] = len(text_content)
+        for tag in soup(["script", "style", "nav", "footer", "header"]):
+            tag.decompose()
+        text_content = soup.get_text(separator=" ", strip=True)
+        text_content = " ".join(text_content.split())
+        result["text_content"] = text_content[:5000]
+        result["logs"].append({"step": "CLEAN_HTML", "message": f"Testo estratto: {len(text_content)} char", "status": "ok"})
 
-            ollama_available = False
-            try:
-                resp = requests.get(f"{settings.ollama_url}/api/tags", timeout=3)
-                ollama_available = resp.status_code == 200
-            except Exception:
-                pass
+        ai_data = {}
 
-            if ollama_available and settings.ollama_model and text_content:
-                try:
-                    client = OllamaClient(settings.ollama_url)
-                    model_name = str(settings.ollama_model)
+        date_patterns = [
+            r"\b(\d{1,2})\s*(?:-giu|-lug|-ago|-set|-ott|-nov|-dic|gen|feb|mar|apr|mag|giu|lug|ago|set|ott|nov|dic)\w*\s*(\d{2,4})",
+            r"\b(\d{1,2})\s*(?:January|February|March|April|May|June|July|August|September|October|November|December)\s*(\d{4})",
+            r"\b(\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4})",
+        ]
+        for pat in date_patterns:
+            match = re.search(pat, text_content, re.IGNORECASE)
+            if match:
+                ai_data["dates"] = match.group(0)
+                result["logs"].append({"step": "DATE", "message": f"Data trovata: {match.group(0)}", "status": "ok"})
+                break
 
-                    prompt = f"""You are a trade fair analyzer. Extract information from this website text.
+        location_patterns = [
+            r"\b(?:presso|a|in|at)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})",
+            r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}),\s*[A-Z]{2}",
+            r"Fiera\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)",
+            r"Centrexpo\s+([A-Z][a-z]+)",
+        ]
+        cities = ["Milano", "Roma", "Torino", "Bologna", "Firenza", "Napoli", "Genova", "Verona", "Padova", "Vicenza", "Bari", "Catania", "Reggio Emilia", "Modena", "Reggio Emilia"]
+        for city in cities:
+            if city.lower() in text_content.lower():
+                ai_data["location"] = city
+                result["logs"].append({"step": "LOCATION", "message": f"Location: {city}", "status": "ok"})
+                break
+        if "location" not in ai_data:
+            for pat in location_patterns:
+                match = re.search(pat, text_content, re.IGNORECASE)
+                if match:
+                    ai_data["location"] = match.group(1).strip()
+                    result["logs"].append({"step": "LOCATION", "message": f"Location: {match.group(1)}", "status": "ok"})
+                    break
 
-TEXT CONTENT:
-{text_content[:6000]}
+        sector_keywords = {
+            "food": ["cibo", "food", "alimentation", "gastronomia"],
+            "tech": ["tech", "tecnologia", "ict", "digital", "innovation"],
+            "build": ["costruzioni", "building", "arch", "real estate"],
+            "agro": ["agricoltura", "agro", "farm", "food chain"],
+            "auto": ["auto", "automotive", "motors", "veicoli"],
+            "health": ["salute", "health", "medical", "pharma"],
+            " textile": ["tessile", "textile", "fashion", "abbigliamento"],
+            "logistics": ["logistica", "logistics", "trasporti"],
+            "tourism": ["turismo", "tourism", "hospitality"],
+            "energy": ["energia", "energy", "green", "rinnovabili"],
+        }
+        for sector, keywords in sector_keywords.items():
+            for kw in keywords:
+                if kw in text_content.lower():
+                    ai_data["sector"] = sector.capitalize()
+                    result["logs"].append({"step": "SECTOR", "message": f"Settore: {sector}", "status": "ok"})
+                    break
+            if "sector" in ai_data:
+                break
 
-Extract in JSON format:
-{{"name": "official fair name", "description": "2-3 sentence description", "location": "city", "dates": "dates if mentioned", "sector": "industry sector", "organizer": "organizer name", "venue": "venue name", "expected_visitors": number, "exhibitors_count": number}}
+        org_patterns = [
+            r"organizzato\s+da\s+([A-Z][a-zA-Z\s]+?)(?:\.|,|$)",
+            r"organizer[:\s]+([A-Z][a-zA-Z\s]+?)(?:\.|,|$)",
+            r"by\s+([A-Z][a-zA-Z\s]+?)(?:\.|,|http)",
+        ]
+        for pat in org_patterns:
+            match = re.search(pat, text_content, re.IGNORECASE)
+            if match:
+                ai_data["organizer"] = match.group(1).strip()[:50]
+                result["logs"].append({"step": "ORGANIZER", "message": f"Organizzatore: {match.group(1)[:30]}", "status": "ok"})
+                break
 
-Reply ONLY with valid JSON."""
+        venue_patterns = [
+            r"(?:fiere?|centro)\s+([A-Z][a-zA-Z\s]+?)(?:\.|,|$)",
+            r"venue[:\s]+([A-Z][a-zA-Z\s]+?)(?:\.|,|$)",
+            r"(?:举|展)m([A-Z][a-zA-Z\s]+?)(?:\.|,|$)",
+        ]
+        for pat in venue_patterns:
+            match = re.search(pat, text_content, re.IGNORECASE)
+            if match:
+                ai_data["venue"] = match.group(1).strip()[:50]
+                result["logs"].append({"step": "VENUE", "message": f"Venue: {match.group(1)[:30]}", "status": "ok"})
+                break
 
-                    ai_resp = client.chat(model_name, prompt)
-                    result["prompt"] = prompt[:500] + "..."
-                    result["ai_response"] = ai_resp[:300] + "..." if ai_resp and len(ai_resp) > 300 else ai_resp
+        visitors_match = re.search(r"(\d{1,3}(?:\.\d{3})*)\s*(?:visitatori|visitors|affluenza)", text_content, re.IGNORECASE)
+        if visitors_match:
+            ai_data["expected_visitors"] = int(visitors_match.group(1).replace(".", ""))
+            result["logs"].append({"step": "VISITORS", "message": f"Visitatori: {ai_data['expected_visitors']}", "status": "ok"})
 
-                    if ai_resp:
-                        import re, json
-                        match = re.search(r'\{[\s\S]*\}', ai_resp)
-                        if match:
-                            result["ai_data"] = json.loads(match.group())
-                except Exception as e:
-                    result["ai_error"] = str(e)
+        exhibitors_match = re.search(r"(\d{1,3}(?:\.\d{3})*)\s*(?:espositori|exhibitors|stand)", text_content, re.IGNORECASE)
+        if exhibitors_match:
+            ai_data["exhibitors_count"] = int(exhibitors_match.group(1).replace(".", ""))
+            result["logs"].append({"step": "EXHIBITORS", "message": f"Espositori: {ai_data['exhibitors_count']}", "status": "ok"})
+
+        if not result["title"]:
+            result["title"] = ai_data.get("name", "")
+        if not result["description"] and not ai_data.get("description"):
+            desc_len = min(200, len(text_content))
+            result["description"] = text_content[:desc_len]
+            if result["description"]:
+                result["logs"].append({"step": "DESCRIPTION", "message": "Descrizione generata dal testo", "status": "ok"})
+
+        if ai_data:
+            result["ai_data"] = ai_data
+            result["logs"].append({"step": "PARSE_DONE", "message": "Parsing locale completato", "status": "ok"})
 
     except Exception as e:
         result["error"] = str(e)
+        result["logs"].append({"step": "ERROR", "message": f"Errore: {str(e)}", "status": "error"})
+
+    result["logs"].append({"step": "END", "message": "Raccolta completata", "status": "ok"})
 
     return result
 
@@ -354,12 +439,56 @@ def analyze_fair(fair_id: str, db: Session = Depends(get_db)):
     if not fair:
         raise HTTPException(status_code=404, detail="Fair not found")
 
-    import threading
-    thread = threading.Thread(target=analyze_fair_task, args=(fair_id,))
-    thread.daemon = True
-    thread.start()
+    result = {
+        "fair_id": fair_id,
+        "logs": [],
+        "data": {},
+        "attachments_text": ""
+    }
 
-    return {"status": "started", "message": "Raccolta dati avviata in background"}
+    result["logs"].append({"step": "START", "message": f"Inizio analisi completa per {fair.name}", "status": "ok"})
+
+    import os
+    from pathlib import Path
+    attachments = fair.attachments or []
+    if attachments:
+        result["logs"].append({"step": "ATTACHMENTS", "message": f"Trovati {len(attachments)} allegati", "status": "ok"})
+        all_text = []
+        for att in attachments:
+            att_url = att.get("url", "") if isinstance(att, dict) else str(att)
+            if not att_url:
+                continue
+            full_path = Path("." + att_url) if att_url.startswith("/") else Path(att_url)
+            if full_path.exists():
+                ext = full_path.suffix.lower()
+                try:
+                    if ext == ".pdf":
+                        import fitz
+                        doc = fitz.open(full_path)
+                        text = "\n".join([page.get_text() for page in doc])
+                        doc.close()
+                        all_text.append(f"\n=== {full_path.name} ===\n{text[:2000]}")
+                        result["logs"].append({"step": "PDF_EXTRACT", "message": f"Estratto da {full_path.name}: {len(text)} char", "status": "ok"})
+                    elif ext in [".txt", ".md"]:
+                        text = full_path.read_text(encoding="utf-8", errors="ignore")
+                        all_text.append(f"\n=== {full_path.name} ===\n{text[:2000]}")
+                        result["logs"].append({"step": "TXT_EXTRACT", "message": f"Estratto da {full_path.name}", "status": "ok"})
+                except Exception as e:
+                    result["logs"].append({"step": "ATTACH_ERROR", "message": f"Errore {full_path.name}: {str(e)}", "status": "warning"})
+        result["attachments_text"] = "\n\n".join(all_text)[:5000]
+    else:
+        result["logs"].append({"step": "ATTACHMENTS", "message": "Nessun allegato trovato", "status": "warning"})
+
+    fair.scraped_data = {
+        "analyzed_at": datetime.now().isoformat(),
+        "attachments_text": result["attachments_text"][:500] if result["attachments_text"] else None
+    }
+    db.commit()
+
+    result["logs"].append({"step": "SAVE", "message": "Dati allegati salvati nel record", "status": "ok"})
+    result["logs"].append({"step": "END", "message": "Analisi completata", "status": "ok"})
+
+    return result
 
 
 def analyze_fair_task(fair_id: str):

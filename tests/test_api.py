@@ -404,11 +404,11 @@ class TestAnalyze:
     """Test analyze and evaluation endpoints."""
     
     def test_analyze_fair_starts_task(self, sample_fair):
-        """Test analyze endpoint starts background task."""
+        """Test analyze endpoint processes fair."""
         response = client.post(f"/api/fairs/{sample_fair.id}/analyze")
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "started"
+        assert "logs" in data
     
     def test_evaluate_fair_no_attachments(self, sample_fair):
         """Test evaluate fails without attachments."""
