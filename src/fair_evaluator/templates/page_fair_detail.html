@@ -389,7 +389,7 @@
         method: 'PUT',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({[field]: value})
-      });
+      }).catch(e => console.error('Save error:', e));
     }
     
     function saveFieldJsonList(field) {
@@ -400,24 +400,48 @@
         method: 'PUT',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({[field]: value})
-      });
+      }).catch(e => console.error('Save JSON error:', e));
     }
     
+    const apiToId = {
+      name: 'fairName',
+      url: 'fairUrl',
+      location: 'fairLocation',
+      dates: 'fairDates',
+      venue: 'fairVenue',
+      address: 'fairAddress',
+      organizer: 'fairOrganizer',
+      sector: 'fairSector',
+      frequency: 'fairFrequency',
+      edition: 'fairEdition',
+      expected_visitors: 'fairExpectedVisitors',
+      exhibitors_count: 'fairExhibitorsCount',
+      stand_cost: 'fairStandCost',
+      visitor_profile: 'fairVisitorProfile',
+      company_website: 'fairSiteUrl',
+      company_linkedin: 'fairLinkedin',
+      fair_email: 'fairEmail',
+      instagram: 'fairInstagram',
+      facebook: 'fairFacebook',
+      tiktok: 'fairTiktok',
+      description: 'fairDescription',
+      status: 'fairStatus'
+    };
+    
     function saveAllFields() {
-      const fields = ['name', 'url', 'location', 'dates', 'venue', 'address', 'organizer', 'sector', 'frequency', 'edition', 'expected_visitors', 'exhibitors_count', 'stand_cost', 'visitor_profile', 'company_website', 'company_linkedin', 'fair_email', 'instagram', 'facebook', 'tiktok', 'description', 'status'];
       const data = {};
-      fields.forEach(f => {
-        const el = document.getElementById('fair' + f.charAt(0).toUpperCase() + f.slice(1));
-        if (el) data[f] = el.value;
-      });
+      for (const [apiField, htmlId] of Object.entries(apiToId)) {
+        const el = document.getElementById(htmlId);
+        if (el) data[apiField] = el.value;
+      }
       fetch('/api/fairs/' + fairId, {
         method: 'PUT',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(data)
       }).then(r => r.json()).then(d => {
-        if (d.id) showMessage('Salvataggio completato!', 'success');
-        else showMessage('Errore durante il salvataggio', 'danger');
-      });
+        if (d.id || d.status === 'updated') showMessage('Salvataggio completato!', 'success');
+        else showMessage('Errore: ' + JSON.stringify(d), 'danger');
+      }).catch(e => showMessage('Errore: ' + e.message, 'danger'));
     }
     
     async function analyzeFair() {
