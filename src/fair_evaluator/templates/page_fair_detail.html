@@ -81,6 +81,7 @@
               <button class="btn btn-primary" onclick="analyzeFair()"><i class="fas fa-spider me-2"></i>Raccogli Dati</button>
               <button class="btn btn-success" onclick="evaluateFair()" {% if not fair.attachments %}disabled{% endif %}><i class="fas fa-robot me-2"></i>Valuta</button>
               <button class="btn btn-warning" onclick="saveAllFields()"><i class="fas fa-save me-2"></i>Salva</button>
+              <button class="btn btn-secondary" onclick="archiveFair()"><i class="fas fa-archive me-2"></i>Archivia</button>
               <button class="btn btn-danger" onclick="deleteFair()"><i class="fas fa-trash me-2"></i>Elimina</button>
             </div>
           </div>
@@ -469,6 +470,19 @@
       if (!confirm('Eliminare questa fiera?')) return;
       await fetch('/api/fairs/' + fairId, { method: 'DELETE' });
       window.location.href = '/fairs';
+    }
+    
+    async function archiveFair() {
+      const participated = confirm('Hai partecipato a questa fiera?');
+      const archived = confirm('Archiviare questa fiera (sarà nascosta dalla lista)?');
+      if (!archived) return;
+      await fetch('/api/fairs/' + fairId, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({archived: 'yes'})
+      });
+      showMessage('Fiera archiviata!', 'success');
+      setTimeout(() => window.location.href = '/fairs', 1500);
     }
     
     let generatedAIPrompt = '';

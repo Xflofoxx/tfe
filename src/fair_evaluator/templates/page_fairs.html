@@ -57,7 +57,7 @@
         <div class="card mb-4">
           <div class="card-body">
             <div class="row">
-              <div class="col-md-3">
+              <div class="col-md-2">
                 <label class="form-label">Filtro Stato</label>
                 <select class="form-select" id="filterStatus" onchange="applyFilters()">
                   <option value="">Tutti</option>
@@ -68,7 +68,15 @@
                   <option value="rifiutata">Rifiutata</option>
                 </select>
               </div>
-              <div class="col-md-3">
+              <div class="col-md-2">
+                <label class="form-label">Archivio</label>
+                <select class="form-select" id="filterArchived" onchange="location.reload()">
+                  <option value="no">Attive</option>
+                  <option value="yes">Archiviate</option>
+                  <option value="">Tutte</option>
+                </select>
+              </div>
+              <div class="col-md-2">
                 <label class="form-label">Filtro Location</label>
                 <select class="form-select" id="filterLocation" onchange="applyFilters()">
                   <option value="">Tutte</option>
@@ -77,7 +85,7 @@
                   {% endfor %}
                 </select>
               </div>
-              <div class="col-md-3">
+              <div class="col-md-2">
                 <label class="form-label">Filtro Anno</label>
                 <select class="form-select" id="filterYear" onchange="applyFilters()">
                   <option value="">Tutti</option>
@@ -86,7 +94,7 @@
                   {% endfor %}
                 </select>
               </div>
-              <div class="col-md-3">
+              <div class="col-md-4">
                 <label class="form-label">Cerca</label>
                 <input type="text" class="form-control" id="searchText" placeholder="Nome fiera..." onkeyup="applyFilters()">
               </div>

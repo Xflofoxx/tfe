@@ -127,6 +127,7 @@ class FairUpdate(BaseModel):
     contacts: dict | None = None
     attachments: list | None = None
     status: str | None = None
+    archived: str | None = None
     recommendation: str | None = None
     rationale: str | None = None
     cost_estimate: dict | None = None
@@ -432,9 +433,12 @@ def create_fair(fair_data: FairCreate, db: Session = Depends(get_db)):
 
 
 @app.get("/api/fairs", response_model=list[dict])
-def list_fairs(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    fairs = db.query(Fair).order_by(Fair.id.desc()).offset(skip).limit(limit).all()
-    return [{"id": f.id, "name": f.name or "N/A", "year": f.year, "url": f.url or "", "description": f.description or "", "folder_path": f.folder_path or "", "site_url": f.company_website or "", "linkedin_url": f.company_linkedin or "", "fair_email": f.fair_email or "", "gallery": f.gallery or [], "attachments": f.attachments or [], "contacts": f.contacts or {}, "stand_cost": f.stand_cost or 0, "status": f.status or "in_valutazione", "scraped_data": f.scraped_data, "recommendation": f.recommendation or "", "instagram": f.instagram or "", "facebook": f.facebook or "", "tiktok": f.tiktok or ""} for f in fairs]
+def list_fairs(skip: int = 0, limit: int = 100, show_archived: bool = False, db: Session = Depends(get_db)):
+    query = db.query(Fair)
+    if not show_archived:
+        query = query.filter(Fair.archived != "yes")
+    fairs = query.order_by(Fair.id.desc()).offset(skip).limit(limit).all()
+    return [{"id": f.id, "name": f.name or "N/A", "year": f.year, "url": f.url or "", "description": f.description or "", "folder_path": f.folder_path or "", "site_url": f.company_website or "", "linkedin_url": f.company_linkedin or "", "fair_email": f.fair_email or "", "gallery": f.gallery or [], "attachments": f.attachments or [], "contacts": f.contacts or {}, "stand_cost": f.stand_cost or 0, "status": f.status or "in_valutazione", "scraped_data": f.scraped_data, "recommendation": f.recommendation or "", "instagram": f.instagram or "", "facebook": f.facebook or "", "tiktok": f.tiktok or "", "archived": f.archived or "no"} for f in fairs]
 
 
 @app.get("/api/fairs/{fair_id}", response_model=dict)
@@ -442,7 +446,7 @@ def get_fair(fair_id: str, db: Session = Depends(get_db)):
     fair = db.query(Fair).filter(Fair.id == fair_id).first()
     if not fair:
         raise HTTPException(status_code=404, detail="Fair not found")
-    return {"id": fair.id, "name": fair.name, "year": fair.year, "url": fair.url, "description": fair.description or "", "folder_path": fair.folder_path or "", "site_url": fair.company_website, "dates": fair.dates, "location": fair.location, "target_segments": fair.target_segments, "expected_visitors": fair.expected_visitors, "exhibitors_count": fair.exhibitors_count, "sources": fair.sources, "linkedin_url": fair.company_linkedin, "fair_email": fair.fair_email or "", "gallery": fair.gallery or [], "attachments": fair.attachments or [], "contacts": fair.contacts or {}, "stand_cost": fair.stand_cost or 0, "status": fair.status or "in_valutazione", "scraped_data": fair.scraped_data, "historical_data": fair.historical_data, "ROI_assessment": fair.ROI_assessment, "cost_estimate": fair.cost_estimate, "recommendation": fair.recommendation, "rationale": fair.rationale, "report_pdf_path": fair.report_pdf_path, "report_html_path": fair.report_html_path, "venue": fair.venue, "address": fair.address, "sector": fair.sector, "frequency": fair.frequency, "edition": fair.edition, "organizer": fair.organizer, "exhibitor_countries": fair.exhibitor_countries, "visitor_profile": fair.visitor_profile, "product_categories": fair.product_categories, "key_features": fair.key_features, "instagram": fair.instagram or "", "facebook": fair.facebook or "", "tiktok": fair.tiktok or ""}
+    return {"id": fair.id, "name": fair.name, "year": fair.year, "url": fair.url, "description": fair.description or "", "folder_path": fair.folder_path or "", "site_url": fair.company_website, "dates": fair.dates, "location": fair.location, "target_segments": fair.target_segments, "expected_visitors": fair.expected_visitors, "exhibitors_count": fair.exhibitors_count, "sources": fair.sources, "linkedin_url": fair.company_linkedin, "fair_email": fair.fair_email or "", "gallery": fair.gallery or [], "attachments": fair.attachments or [], "contacts": fair.contacts or {}, "stand_cost": fair.stand_cost or 0, "status": fair.status or "in_valutazione", "archived": fair.archived or "no", "scraped_data": fair.scraped_data, "historical_data": fair.historical_data, "ROI_assessment": fair.ROI_assessment, "cost_estimate": fair.cost_estimate, "recommendation": fair.recommendation, "rationale": fair.rationale, "report_pdf_path": fair.report_pdf_path, "report_html_path": fair.report_html_path, "venue": fair.venue, "address": fair.address, "sector": fair.sector, "frequency": fair.frequency, "edition": fair.edition, "organizer": fair.organizer, "exhibitor_countries": fair.exhibitor_countries, "visitor_profile": fair.visitor_profile, "product_categories": fair.product_categories, "key_features": fair.key_features, "instagram": fair.instagram or "", "facebook": fair.facebook or "", "tiktok": fair.tiktok or ""}
 
 
 @app.put("/api/fairs/{fair_id}", response_model=dict)

@@ -132,6 +132,7 @@ class Fair(Base):
     contacts = Column(JSON, nullable=True)
     stand_cost = Column(Integer, nullable=True)
     status = Column(String, default="in_valutazione", index=True)
+    archived = Column(String, default="no")
     scraped_data = Column(JSON, nullable=True)
     historical_data = Column(JSON, nullable=True)
     ROI_assessment = Column(JSON, nullable=True)
