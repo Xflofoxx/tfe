@@ -321,6 +321,22 @@
               </div>
             </div>
             
+            <!-- AI Prompt -->
+            <div class="section-card">
+              <div class="section-header">
+                <h5><i class="fas fa-robot me-2 text-primary"></i>Prompt AI</h5>
+              </div>
+              <div class="section-body">
+                <button class="btn btn-outline-primary btn-sm w-100 mb-2" onclick="generateAIPrompt()"><i class="fas fa-magic me-2"></i>Genera Prompt</button>
+                <textarea class="form-control form-control-sm mb-2" id="aiPrompt" rows="4" placeholder="Genera un prompt per Copilot/ChatGPT..."></textarea>
+                <div class="d-flex gap-2 mb-2">
+                  <button class="btn btn-sm btn-secondary flex-grow-1" onclick="copyPrompt()"><i class="fas fa-copy me-1"></i>Copia</button>
+                  <button class="btn btn-sm btn-success flex-grow-1" onclick="applyAIData()" id="applyAIBtn" disabled><i class="fas fa-check me-1"></i>Applica</button>
+                </div>
+                <textarea class="form-control form-control-sm" id="aiResult" rows="4" placeholder="Incolla qui la risposta dell'AI..."></textarea>
+              </div>
+            </div>
+            
             <!-- Contatti Commerciali -->
             <div class="section-card">
               <div class="section-header">
@@ -440,6 +456,128 @@
       if (!confirm('Eliminare questa fiera?')) return;
       await fetch('/api/fairs/' + fairId, { method: 'DELETE' });
       window.location.href = '/fairs';
+    }
+    
+    let generatedAIPrompt = '';
+    
+    function generateAIPrompt() {
+      const name = document.getElementById('fairName').value || '{{ fair.name }}';
+      const location = document.getElementById('fairLocation').value || '{{ fair.location or '' }}';
+      const dates = document.getElementById('fairDates').value || '{{ fair.dates[0] if fair.dates else '' }}';
+      const venue = document.getElementById('fairVenue').value || '{{ fair.venue or '' }}';
+      const organizer = document.getElementById('fairOrganizer').value || '{{ fair.organizer or '' }}';
+      const sector = document.getElementById('fairSector').value || '{{ fair.sector or '' }}';
+      const url = document.getElementById('fairUrl').value || '{{ fair.url }}';
+      const desc = document.getElementById('fairDescription').value || '{{ fair.description or '' }}';
+      
+      generatedAIPrompt = `Sei un esperto di fiere commerciali. Analizza questa fiera e forniscimi un report strutturato.
+
+Fiera: ${name}
+Anno: {{ fair.year }}
+URL: ${url}
+Descrizione: ${desc}
+Location: ${location}
+Dates: ${dates}
+Venue: ${venue}
+Organizzatore: ${organizer}
+Settore: ${sector}
+
+Per favore estrai e restituisci SOLO un JSON con questa struttura:
+{
+  "name": "nome ufficiale fiera",
+  "next_date": "prossima data (formato gg-mm-aaaa)",
+  "location": "città",
+  "venue": "nome venue",
+  "organizer": "organizzatore",
+  "sector": "settore merceologico",
+  "expected_visitors": numero visitatori attesi,
+  "exhibitors_count": numero espositori,
+  "stand_cost": costo stand medio in euro,
+  "frequency": "annuale|biennale|triennale",
+  "description": "descrizione di almeno 200 parole",
+  "key_features": ["features principali"],
+  "target_segments": ["target B2B|B2C|Trade"],
+  "product_categories": ["categorie prodotto"]
+}
+
+Rispondi SOLO con JSON valido, niente altro testo.`;
+      
+      document.getElementById('aiPrompt').value = generatedAIPrompt;
+      document.getElementById('applyAIBtn').disabled = false;
+      showMessage('Prompt generato! Copialo in ChatGPT/Copilot', 'info');
+    }
+    
+    function copyPrompt() {
+      const prompt = document.getElementById('aiPrompt').value;
+      navigator.clipboard.writeText(prompt).then(() => {
+        showMessage('Prompt copiato negli appunti!', 'success');
+      });
+    }
+    
+    function applyAIData() {
+      const resultText = document.getElementById('aiResult').value.trim();
+      if (!resultText) { showMessage('Incolla prima la risposta dell\'AI', 'warning'); return; }
+      
+      try {
+        let data;
+        const match = resultText.match(/\{[\s\S]*\}/);
+        if (match) {
+          data = JSON.parse(match[0]);
+        } else {
+          throw new Error('Nessun JSON trovato');
+        }
+        
+        let updated = 0;
+        const fields = [
+          ['name', 'fairName'],
+          ['next_date', 'fairDates'],
+          ['location', 'fairLocation'],
+          ['venue', 'fairVenue'],
+          ['organizer', 'fairOrganizer'],
+          ['sector', 'fairSector'],
+          ['expected_visitors', 'fairExpectedVisitors'],
+          ['exhibitors_count', 'fairExhibitorsCount'],
+          ['stand_cost', 'fairStandCost'],
+          ['frequency', 'fairFrequency'],
+          ['description', 'fairDescription']
+        ];
+        
+        fields.forEach(([key, id]) => {
+          if (data[key] !== undefined && data[key]) {
+            const el = document.getElementById(id);
+            if (el) {
+              el.value = data[key];
+              saveField(key);
+              updated++;
+            }
+          }
+        });
+        
+        if (data.key_features) {
+          const el = document.getElementById('fairKeyFeatures');
+          el.value = Array.isArray(data.key_features) ? data.key_features.join(', ') : data.key_features;
+          saveFieldJsonList('key_features');
+          updated++;
+        }
+        
+        if (data.target_segments) {
+          const el = document.getElementById('fairTargetSegments');
+          el.value = Array.isArray(data.target_segments) ? data.target_segments.join(', ') : data.target_segments;
+          saveFieldJsonList('target_segments');
+          updated++;
+        }
+        
+        if (data.product_categories) {
+          const el = document.getElementById('fairProductCategories');
+          el.value = Array.isArray(data.product_categories) ? data.product_categories.join(', ') : data.product_categories;
+          saveFieldJsonList('product_categories');
+          updated++;
+        }
+        
+        showMessage(`Dati aggiornati: ${updated} campi`, 'success');
+      } catch (e) {
+        showMessage('Errore parsing JSON: ' + e.message, 'danger');
+      }
     }
   </script>
 </body>
