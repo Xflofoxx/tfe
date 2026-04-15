@@ -408,7 +408,7 @@ class TestAnalyze:
         response = client.post(f"/api/fairs/{sample_fair.id}/analyze")
         assert response.status_code == 200
         data = response.json()
-        assert "logs" in data
+        assert data["status"] == "started"
     
     def test_evaluate_fair_no_attachments(self, sample_fair):
         """Test evaluate fails without attachments."""

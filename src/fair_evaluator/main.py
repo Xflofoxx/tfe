@@ -6,7 +6,7 @@ from uuid import uuid4
 
 import requests
 import urllib3
-from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
+from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from pydantic import BaseModel
@@ -150,12 +150,13 @@ class SettingsUpdate(BaseModel):
     ollama_url: str | None = None
     ollama_model: str | None = None
     strategy_prompt: str | None = None
+    default_network_path: str | None = None
 
 
 @app.get("/api/settings")
 def get_settings_endpoint(db: Session = Depends(get_db)):
     s = get_settings_db(db)
-    return {"ollama_url": s.ollama_url, "ollama_model": s.ollama_model, "strategy_prompt": s.strategy_prompt or ""}
+    return {"ollama_url": s.ollama_url, "ollama_model": s.ollama_model, "strategy_prompt": s.strategy_prompt or "", "default_network_path": s.default_network_path or ""}
 
 
 @app.post("/api/settings")
@@ -167,6 +168,8 @@ def update_settings(settings: SettingsUpdate, db: Session = Depends(get_db)):
         s.ollama_model = settings.ollama_model
     if settings.strategy_prompt is not None:
         s.strategy_prompt = settings.strategy_prompt
+    if settings.default_network_path is not None:
+        s.default_network_path = settings.default_network_path
     db.commit()
     return {"status": "saved"}
 
@@ -201,6 +204,92 @@ def notifications_stream(request):
 @app.get("/api/notifications")
 def get_notifications():
     return notifications[-20:]
+
+
+class ScanFolderRequest(BaseModel):
+    folder_path: str
+
+
+@app.post("/api/scan-network-folder")
+def scan_network_folder(data: ScanFolderRequest, db: Session = Depends(get_db)):
+    import os
+    import re
+    folder = data.folder_path
+    if not folder:
+        raise HTTPException(status_code=400, detail="Folder path required")
+    
+    found_count = 0
+    errors = []
+    
+    try:
+        if not os.path.exists(folder):
+            try:
+                import pathlib
+                path = pathlib.Path(folder)
+                if not path.exists():
+                    return {"found": 0, "errors": ["Percorso non accessibile"]}
+            except Exception as e:
+                return {"found": 0, "errors": [str(e)]}
+        
+        fair_name_pattern = re.compile(r"^(.+?)\s*(\d{4})?\s*$", re.IGNORECASE)
+        
+        for entry in os.listdir(folder):
+            entry_path = os.path.join(folder, entry)
+            if os.path.isdir(entry_path):
+                fair_name = entry.strip()
+                year_match = fair_name_pattern.match(fair_name)
+                if year_match:
+                    fair_name = year_match.group(1).strip()
+                    year = int(year_match.group(2)) if year_match.group(2) else datetime.now().year
+                else:
+                    year = datetime.now().year
+                
+                existing = db.query(Fair).filter(Fair.name.ilike(fair_name), Fair.year == year).first()
+                if existing:
+                    errors.append(f"Fiera già esistente: {fair_name} {year}")
+                    continue
+                
+                new_fair = Fair(
+                    id=str(uuid4()),
+                    name=fair_name,
+                    year=year,
+                    network_path=entry_path,
+                    folder_path=entry_path,
+                    status="in_valutazione",
+                    sources=[{"type": "network_scan", "date": datetime.now().isoformat()}]
+                )
+                db.add(new_fair)
+                found_count += 1
+                
+                for subfile in os.listdir(entry_path):
+                    subpath = os.path.join(entry_path, subfile)
+                    if os.path.isfile(subpath):
+                        ext = os.path.splitext(subfile)[1].lower()
+                        if ext in ['.pdf', '.xlsx', '.docx', '.txt', '.md']:
+                            if not new_fair.attachments:
+                                new_fair.attachments = []
+                            new_fair.attachments.append({
+                                "name": subfile,
+                                "url": subpath,
+                                "type": ext
+                            })
+        
+        db.commit()
+        return {"found": found_count, "errors": errors[:10]}
+    
+    except Exception as e:
+        return {"found": found_count, "errors": [str(e)]}
+
+
+@app.post("/api/sync-from-network-folder")
+def sync_from_network_folder(db: Session = Depends(get_db)):
+    """Sincronizza le fiere esistenti con la cartella di rete configurata."""
+    settings = db.query(Settings).first()
+    if not settings or not settings.default_network_path:
+        raise HTTPException(status_code=400, detail="Nessuna cartella configurata")
+    
+    folder = settings.default_network_path
+    return scan_network_folder(ScanFolderRequest(folder_path=folder), db)
 
 
 @app.post("/api/upload-strategy")
@@ -365,6 +454,116 @@ def update_fair(fair_id: str, fair_data: FairUpdate, db: Session = Depends(get_d
     db.commit()
     db.refresh(fair)
     return {"id": fair.id, "status": "updated"}
+
+
+def extract_local_fair_data(title_tag, meta_desc, h1_texts, h2_texts, all_text, emails, phones, future_dates, venue_candidates) -> dict:
+    """Algoritmo locale per estrarre dati della fiera senza AI."""
+    data = {"name": "", "next_date": "", "organizer": "", "sector": "", "venue": "", "location": "", "email": "", "phone": "", "expected_visitors": 0, "exhibitors_count": 0, "stand_cost": 0, "frequency": "", "summary": ""}
+    
+    if title_tag:
+        data["name"] = title_tag.text.strip() if title_tag else ""
+    
+    if h1_texts and len(h1_texts) > 0:
+        if not data["name"] or data["name"] == title_tag.text.strip() if title_tag else "":
+            data["name"] = h1_texts[0]
+    
+    if future_dates and len(future_dates) > 0:
+        data["next_date"] = future_dates[0]
+    
+    if venue_candidates and len(venue_candidates) > 0:
+        data["location"] = venue_candidates[0]
+    
+    if emails and len(emails) > 0:
+        data["email"] = emails[0]
+    
+    if phones and len(phones) > 0:
+        data["phone"] = phones[0]
+    
+    text_lower = all_text.lower()
+    
+    sectors = {
+        "food": ["food", "cibo", "alimentation", "gastronomia", "agricoltura"],
+        "tech": ["tech", "technology", "digital", "ict", "software", "innovation"],
+        "build": ["costruzioni", "building", "construction", "real estate", "architettura"],
+        "health": ["health", "salute", "medical", "pharma", "farmaceutico"],
+        "textile": ["textile", "tessile", "fashion", "abbigliamento", "moda"],
+        "logistics": ["logistics", "logistica", "trasporti", "shipping"],
+        "tourism": ["turismo", "tourism", "hospitality", "alberghiero"],
+        "energy": ["energy", "energia", "green", "renewable", "rinnovabili"],
+        "auto": ["auto", "automotive", "motors", "veicoli"],
+    }
+    for sector, keywords in sectors.items():
+        for kw in keywords:
+            if kw in text_lower:
+                data["sector"] = sector.capitalize()
+                break
+        if data["sector"]:
+            break
+    
+    freq_map = {"annuale": "annuale", "annual": "annuale", "biennale": "biennale", "biennial": "biennale", "triennale": "triennale", "triennial": "triennale"}
+    for freq, kw in freq_map.items():
+        if freq in text_lower:
+            data["frequency"] = kw
+            break
+    
+    import re
+    visitors_match = re.search(r"(\d{1,3}(?:[\.\s]\d{3})*)\s*(?:visitatori|visitors|affluenza|visitatori_previsti)", all_text, re.IGNORECASE)
+    if visitors_match:
+        data["expected_visitors"] = int(visitors_match.group(1).replace(".", "").replace(" ", ""))
+    
+    exhibitors_match = re.search(r"(\d{1,3}(?:[\.\s]\d{3})*)\s*(?:espositori|exhibitors|stand)", all_text, re.IGNORECASE)
+    if exhibitors_match:
+        data["exhibitors_count"] = int(exhibitors_match.group(1).replace(".", "").replace(" ", ""))
+    
+    cost_match = re.search(r"(\d{1,3}(?:[\.\s]\d{3})*)\s*(?:€|euro)", all_text, re.IGNORECASE)
+    if cost_match:
+        data["stand_cost"] = int(cost_match.group(1).replace(".", "").replace(" ", ""))
+    
+    org_patterns = [
+        r"organizzato\s+da\s+([A-Za-z][A-Za-z\s]{2,40})",
+        r"organizer[:\s]+([A-Za-z][A-Za-z\s]{2,40})",
+        r"by\s+([A-Za-z][A-Za-z\s]{2,40})",
+    ]
+    for pat in org_patterns:
+        match = re.search(pat, all_text, re.IGNORECASE)
+        if match:
+            data["organizer"] = match.group(1).strip()[:50]
+            break
+    
+    venue_patterns = [
+        r"(?:fiera|centro\s+fieristico|quartiere)\s+([A-Za-z][A-Za-z\s]{2,40})",
+        r"venue[:\s]+([A-Za-z][A-Za-z\s]{2,40})",
+    ]
+    for pat in venue_patterns:
+        match = re.search(pat, all_text, re.IGNORECASE)
+        if match:
+            data["venue"] = match.group(1).strip()[:50]
+            break
+    
+    if meta_desc:
+        desc = meta_desc.get("content", "")[:500]
+        if desc:
+            data["summary"] = f"Fiera: {data['name'] or 'N/A'}. {desc[:300]} Location: {data['location'] or 'N/A'}. Settore: {data['sector'] or 'N/A'}."
+    
+    if not data["summary"] or len(data["summary"]) < 50:
+        summary_parts = []
+        if data["name"]:
+            summary_parts.append(f" {data['name']}")
+        if data["next_date"]:
+            summary_parts.append(f" Data: {data['next_date']}")
+        if data["location"]:
+            summary_parts.append(f" Luogo: {data['location']}")
+        if data["sector"]:
+            summary_parts.append(f" Settore: {data['sector']}")
+        if data["expected_visitors"]:
+            summary_parts.append(f" Visitatori attesi: {data['expected_visitors']}")
+        if data["exhibitors_count"]:
+            summary_parts.append(f" Espositori: {data['exhibitors_count']}")
+        data["summary"] = ". ".join(summary_parts)
+        if data["location"] or data["sector"]:
+            data["summary"] += ". Per valutare la partecipazione analizzare costi e benefici."
+    
+    return data
 
 
 @app.delete("/api/fairs/{fair_id}", response_model=dict)
@@ -557,8 +756,17 @@ ALLEGATI (estratti da PDF/documenti):
 """
 
         settings = db.query(Settings).first()
-
-        if settings and settings.ollama_model:
+        use_ai = settings and settings.ollama_model
+        ollama_available = False
+        
+        if use_ai:
+            try:
+                test_resp = requests.get(f"{settings.ollama_url}/api/tags", timeout=2)
+                ollama_available = test_resp.status_code == 200
+            except Exception:
+                pass
+        
+        if use_ai and ollama_available:
             log("OLLAMA", f"Analisi con Ollama: {settings.ollama_model}")
             try:
                 client = OllamaClient(settings.ollama_url)
@@ -618,14 +826,19 @@ Rispondi SOLO con JSON valido, niente altro testo."""
                             result["summary"] = ai_data["summary"]
                             log("SUMMARY", f"Riassunto generato: {len(ai_data['summary'])} parole")
                     else:
-                        log("AI", "Nessun JSON nella risposta", "warning")
+                        log("AI", "Nessun JSON - uso algoritmo locale", "warning")
+                        result["ai_data"] = extract_local_fair_data(title, meta_desc, h1_texts, h2_texts, all_text, emails, phones, future_dates, venue_candidates)
                 else:
-                    log("AI", "Nessuna risposta", "warning")
+                    log("AI", "Nessuna risposta - uso algoritmo locale", "warning")
+                    result["ai_data"] = extract_local_fair_data(title, meta_desc, h1_texts, h2_texts, all_text, emails, phones, future_dates, venue_candidates)
 
             except Exception as e:
                 log("AI_ERROR", str(e)[:60], "warning")
+                log("LOCAL", "Fallback algoritmo locale")
+                result["ai_data"] = extract_local_fair_data(title, meta_desc, h1_texts, h2_texts, all_text, emails, phones, future_dates, venue_candidates)
         else:
-            log("LOCAL", "Ollama non disponibile - dati base estratti")
+            log("LOCAL", "Ollama non disponibile - uso algoritmo locale")
+            result["ai_data"] = extract_local_fair_data(title, meta_desc, h1_texts, h2_texts, all_text, emails, phones, future_dates, venue_candidates)
 
         if not result["title"]:
             result["title"] = result.get("ai_data", {}).get("name", "")
@@ -641,14 +854,13 @@ Rispondi SOLO con JSON valido, niente altro testo."""
 
 
 @app.post("/api/fairs/{fair_id}/analyze")
-def analyze_fair(fair_id: str, db: Session = Depends(get_db)):
+def analyze_fair(fair_id: str, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     fair = db.query(Fair).filter(Fair.id == fair_id).first()
     if not fair:
         raise HTTPException(status_code=404, detail="Fair not found")
 
     broadcast_notification(f"Avvio analisi per {fair.name}...", "info", fair_id)
-    
-    asyncio.create_task(run_analyze_fair(fair_id))
+    background_tasks.add_task(run_analyze_fair, fair_id)
     
     return {"status": "started", "fair_id": fair_id, "message": "Analisi avviata in background"}
 

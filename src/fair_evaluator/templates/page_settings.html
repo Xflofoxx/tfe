@@ -73,6 +73,18 @@
           </div>
           <div class="col-md-6">
             <div class="card mb-4">
+              <div class="card-header"><h5 class="mb-0"><i class="fas fa-folder-tree me-2"></i>Cartella Fiere (SharePoint)</h5></div>
+              <div class="card-body">
+                <p class="text-muted small">Percorso di rete o SharePoint dove sono salvati i documenti delle fiere. Es: \\sharepoint.azienda.it\FiereEdEventi o percorsi Office 365.</p>
+                <div class="mb-3">
+                  <label class="form-label">Percorso Principale</label>
+                  <input type="text" class="form-control" id="networkPath" value="{{ settings.default_network_path or '' }}" placeholder="\\server\share\FiereEdEventi">
+                </div>
+                <button class="btn btn-primary" onclick="saveSettings()"><i class="fas fa-save me-2"></i>Salva</button>
+                <button class="btn btn-outline-info" onclick="scanNetworkFolder()"><i class="fas fa-search me-2"></i>Scansione</button>
+              </div>
+            </div>
+            <div class="card mb-4">
               <div class="card-header"><h5 class="mb-0"><i class="fas fa-brain me-2"></i>Strategia Marketing</h5></div>
               <div class="card-body">
                 <p class="text-muted small">Inserisci il prompt della strategia marketing che verrà usato come contesto per analizzare le fiere con l'AI. Puoi anche generarlo dalla pagina Manutenzione.</p>
@@ -117,7 +129,8 @@
           body: JSON.stringify({
             ollama_url: document.getElementById('ollamaUrl').value,
             ollama_model: model,
-            strategy_prompt: document.getElementById('strategyPrompt').value
+            strategy_prompt: document.getElementById('strategyPrompt').value,
+            default_network_path: document.getElementById('networkPath').value
           })
         });
         if (resp.ok) {
@@ -151,6 +164,29 @@
         document.getElementById('message').innerHTML = '<div class="alert alert-info">Contenuto caricato! Salva per applicare.</div>';
       };
       input.click();
+    }
+    async function scanNetworkFolder() {
+      const folder = document.getElementById('networkPath').value;
+      if (!folder) {
+        document.getElementById('message').innerHTML = '<div class="alert alert-warning">Specifica prima il percorso di rete</div>';
+        return;
+      }
+      document.getElementById('message').innerHTML = '<div class="alert alert-info"><i class="fas fa-spinner fa-spin me-2"></i>Scansione in corso...</div>';
+      try {
+        const resp = await fetch('/api/scan-network-folder', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({folder_path: folder})
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+          document.getElementById('message').innerHTML = '<div class="alert alert-success">Trovate ' + data.found + ' fiere! <a href="/fairs">Visualizza</a></div>';
+        } else {
+          document.getElementById('message').innerHTML = '<div class="alert alert-danger">Errore: ' + data.detail + '</div>';
+        }
+      } catch (err) {
+        document.getElementById('message').innerHTML = '<div class="alert alert-danger">Errore: ' + err.message + '</div>';
+      }
     }
     document.getElementById('importFile').addEventListener('change', async (e) => {
       const file = e.target.files[0];
