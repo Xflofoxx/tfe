@@ -44,6 +44,8 @@
         </nav>
       </div>
       <div class="col-md-10 p-4">
+        <div id="toastContainer" style="position: fixed; top: 20px; right: 20px; z-index: 9999; max-width: 350px;"></div>
+        
         <div class="d-flex justify-content-between align-items-center mb-4">
           <h3><i class="fas fa-building me-2"></i>Elenco Fiere</h3>
           <div>
@@ -141,6 +143,7 @@
                       </span>
                     </td>
                     <td>
+                      <button class="btn btn-sm btn-outline-info" onclick="analyzeFair('{{ fair.id }}')" title="Analizza"><i class="fas fa-robot"></i></button>
                       <a href="/fairs/{{ fair.id }}" class="btn btn-sm btn-outline-primary" title="Dettaglio"><i class="fas fa-eye"></i></a>
                       <button class="btn btn-sm btn-outline-danger" onclick="deleteFair('{{ fair.id }}')" title="Elimina"><i class="fas fa-trash"></i></button>
                     </td>
@@ -249,6 +252,39 @@
       location.reload();
     }
     
+    async function analyzeFair(id) {
+      showToast('Avvio analisi...', 'info', id);
+      await fetch('/api/fairs/' + id + '/analyze', { method: 'POST' });
+    }
+    
+    let eventSource;
+    
+    function connectSSE() {
+      eventSource = new EventSource('/api/notifications/stream');
+      eventSource.onmessage = function(event) {
+        const data = JSON.parse(event.data);
+        showToast(data.message, data.type || 'info', data.fair_id);
+      };
+      eventSource.onerror = function() {
+        setTimeout(connectSSE, 5000);
+      };
+    }
+    
+    function showToast(message, type = 'info', fairId = null) {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      toast.className = `alert alert-${type} alert-dismissible fade show`;
+      toast.style.marginBottom = '10px';
+      const icon = type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : type === 'warning' ? 'exclamation-triangle' : 'info-circle';
+      toast.innerHTML = `
+        <i class="fas fa-${icon} me-2"></i>${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      `;
+      container.appendChild(toast);
+      setTimeout(() => toast.remove(), 8000);
+    }
+    
+    connectSSE();
     applyFilters();
   </script>
 </body>

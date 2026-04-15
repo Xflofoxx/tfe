@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -7,7 +8,7 @@ import requests
 import urllib3
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -28,6 +29,23 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+notifications: list = []
+notification_id = 0
+
+def broadcast_notification(message: str, notification_type: str = "info", fair_id: str = None):
+    global notification_id
+    notification_id += 1
+    notif = {
+        "id": notification_id,
+        "message": message,
+        "type": notification_type,
+        "fair_id": fair_id,
+        "timestamp": datetime.now().isoformat()
+    }
+    notifications.append(notif)
+    if len(notifications) > 100:
+        notifications.pop(0)
 
 Base.metadata.create_all(bind=engine)
 
@@ -63,13 +81,40 @@ class FairCreate(BaseModel):
     linkedin_url: str | None = ""
     fair_email: str | None = ""
     folder_path: str | None = ""
+    network_path: str | None = ""
+    name: str | None = None
+    year: int | None = None
+    location: str | None = None
+    dates: list[str] | None = None
+    venue: str | None = None
+    address: str | None = None
+    sector: str | None = None
+    organizer: str | None = None
+    frequency: str | None = None
+    edition: str | None = None
+    expected_visitors: int | None = None
+    exhibitors_count: int | None = None
+    stand_cost: int | None = None
+    exhibitor_countries: list[str] | None = None
+    visitor_profile: str | None = None
+    target_segments: list[str] | None = None
+    product_categories: list[str] | None = None
+    key_features: list[str] | None = None
+    description: str | None = None
+    status: str | None = None
+    instagram: str | None = None
+    facebook: str | None = None
+    tiktok: str | None = None
+    contacts: dict | None = None
 
 
 class FairUpdate(BaseModel):
     name: str | None = None
+    year: int | None = None
     fair_url: str | None = None
     description: str | None = None
     folder_path: str | None = None
+    network_path: str | None = None
     dates: list[str] | None = None
     location: str | None = None
     target_segments: list[str] | None = None
@@ -85,6 +130,20 @@ class FairUpdate(BaseModel):
     cost_estimate: dict | None = None
     ROI_assessment: dict | None = None
     historical_data: dict | None = None
+    venue: str | None = None
+    address: str | None = None
+    sector: str | None = None
+    organizer: str | None = None
+    frequency: str | None = None
+    edition: str | None = None
+    exhibitor_countries: list[str] | None = None
+    visitor_profile: str | None = None
+    product_categories: list[str] | None = None
+    key_features: list[str] | None = None
+    instagram: str | None = None
+    facebook: str | None = None
+    tiktok: str | None = None
+    previous_editions: list | None = None
 
 
 class SettingsUpdate(BaseModel):
@@ -123,6 +182,25 @@ def check_ollama_status(db: Session = Depends(get_db)):
     except Exception:
         pass
     return {"status": "offline", "available_models": []}
+
+
+@app.get("/api/notifications/stream")
+def notifications_stream(request):
+    async def event_generator():
+        last_id = 0
+        while True:
+            await asyncio.sleep(2)
+            notifs = [n for n in notifications if n["id"] > last_id]
+            for n in notifs:
+                last_id = n["id"]
+                yield f"data: {n}\n\n"
+    
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@app.get("/api/notifications")
+def get_notifications():
+    return notifications[-20:]
 
 
 @app.post("/api/upload-strategy")
@@ -214,15 +292,46 @@ def create_fair(fair_data: FairCreate, db: Session = Depends(get_db)):
         if '.' in name:
             name = name.split('.')[0]
 
+    year = fair_data.year or datetime.now().year
+    
+    previous = db.query(Fair).filter(Fair.name.ilike(fair_data.name or name), Fair.year < year).order_by(Fair.year.desc()).first()
+    previous_editions = []
+    if previous:
+        previous_editions = [{"id": previous.id, "year": previous.year, "status": previous.status, "recommendation": previous.recommendation}]
+    
     fair = Fair(
         id=fair_id,
-        name=name,
+        name=fair_data.name or name,
+        year=year,
         url=fair_data.fair_url,
         company_website=fair_data.site_url or fair_data.fair_url,
         company_linkedin=fair_data.linkedin_url or None,
         fair_email=fair_data.fair_email or None,
         folder_path=fair_data.folder_path or None,
-        status="in_valutazione",
+        network_path=fair_data.network_path or None,
+        status=fair_data.status or "in_valutazione",
+        dates=fair_data.dates,
+        location=fair_data.location,
+        venue=fair_data.venue,
+        address=fair_data.address,
+        sector=fair_data.sector,
+        organizer=fair_data.organizer,
+        frequency=fair_data.frequency,
+        edition=fair_data.edition,
+        expected_visitors=fair_data.expected_visitors,
+        exhibitors_count=fair_data.exhibitors_count,
+        stand_cost=fair_data.stand_cost,
+        exhibitor_countries=fair_data.exhibitor_countries,
+        visitor_profile=fair_data.visitor_profile,
+        target_segments=fair_data.target_segments,
+        product_categories=fair_data.product_categories,
+        key_features=fair_data.key_features,
+        description=fair_data.description,
+        instagram=fair_data.instagram,
+        facebook=fair_data.facebook,
+        tiktok=fair_data.tiktok,
+        contacts=fair_data.contacts,
+        previous_editions=previous_editions,
         sources=[{"type": "manual", "url": fair_data.fair_url, "date": datetime.now().isoformat()}]
     )
     db.add(fair)
@@ -234,7 +343,7 @@ def create_fair(fair_data: FairCreate, db: Session = Depends(get_db)):
 @app.get("/api/fairs", response_model=list[dict])
 def list_fairs(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     fairs = db.query(Fair).order_by(Fair.id.desc()).offset(skip).limit(limit).all()
-    return [{"id": f.id, "name": f.name or "N/A", "url": f.url or "", "description": f.description or "", "folder_path": f.folder_path or "", "site_url": f.company_website or "", "linkedin_url": f.company_linkedin or "", "fair_email": f.fair_email or "", "gallery": f.gallery or [], "attachments": f.attachments or [], "contacts": f.contacts or {}, "stand_cost": f.stand_cost or 0, "status": f.status or "in_valutazione", "scraped_data": f.scraped_data, "recommendation": f.recommendation or ""} for f in fairs]
+    return [{"id": f.id, "name": f.name or "N/A", "url": f.url or "", "description": f.description or "", "folder_path": f.folder_path or "", "site_url": f.company_website or "", "linkedin_url": f.company_linkedin or "", "fair_email": f.fair_email or "", "gallery": f.gallery or [], "attachments": f.attachments or [], "contacts": f.contacts or {}, "stand_cost": f.stand_cost or 0, "status": f.status or "in_valutazione", "scraped_data": f.scraped_data, "recommendation": f.recommendation or "", "instagram": f.instagram or "", "facebook": f.facebook or "", "tiktok": f.tiktok or ""} for f in fairs]
 
 
 @app.get("/api/fairs/{fair_id}", response_model=dict)
@@ -242,7 +351,7 @@ def get_fair(fair_id: str, db: Session = Depends(get_db)):
     fair = db.query(Fair).filter(Fair.id == fair_id).first()
     if not fair:
         raise HTTPException(status_code=404, detail="Fair not found")
-    return {"id": fair.id, "name": fair.name, "url": fair.url, "description": fair.description or "", "folder_path": fair.folder_path or "", "site_url": fair.company_website, "dates": fair.dates, "location": fair.location, "target_segments": fair.target_segments, "expected_visitors": fair.expected_visitors, "exhibitors_count": fair.exhibitors_count, "sources": fair.sources, "linkedin_url": fair.company_linkedin, "fair_email": fair.fair_email or "", "gallery": fair.gallery or [], "attachments": fair.attachments or [], "contacts": fair.contacts or {}, "stand_cost": fair.stand_cost or 0, "status": fair.status or "in_valutazione", "scraped_data": fair.scraped_data, "historical_data": fair.historical_data, "ROI_assessment": fair.ROI_assessment, "cost_estimate": fair.cost_estimate, "recommendation": fair.recommendation, "rationale": fair.rationale, "report_pdf_path": fair.report_pdf_path, "report_html_path": fair.report_html_path, "venue": fair.venue, "address": fair.address, "sector": fair.sector, "frequency": fair.frequency, "edition": fair.edition, "organizer": fair.organizer, "exhibitor_countries": fair.exhibitor_countries, "visitor_profile": fair.visitor_profile, "product_categories": fair.product_categories, "key_features": fair.key_features}
+    return {"id": fair.id, "name": fair.name, "url": fair.url, "description": fair.description or "", "folder_path": fair.folder_path or "", "site_url": fair.company_website, "dates": fair.dates, "location": fair.location, "target_segments": fair.target_segments, "expected_visitors": fair.expected_visitors, "exhibitors_count": fair.exhibitors_count, "sources": fair.sources, "linkedin_url": fair.company_linkedin, "fair_email": fair.fair_email or "", "gallery": fair.gallery or [], "attachments": fair.attachments or [], "contacts": fair.contacts or {}, "stand_cost": fair.stand_cost or 0, "status": fair.status or "in_valutazione", "scraped_data": fair.scraped_data, "historical_data": fair.historical_data, "ROI_assessment": fair.ROI_assessment, "cost_estimate": fair.cost_estimate, "recommendation": fair.recommendation, "rationale": fair.rationale, "report_pdf_path": fair.report_pdf_path, "report_html_path": fair.report_html_path, "venue": fair.venue, "address": fair.address, "sector": fair.sector, "frequency": fair.frequency, "edition": fair.edition, "organizer": fair.organizer, "exhibitor_countries": fair.exhibitor_countries, "visitor_profile": fair.visitor_profile, "product_categories": fair.product_categories, "key_features": fair.key_features, "instagram": fair.instagram or "", "facebook": fair.facebook or "", "tiktok": fair.tiktok or ""}
 
 
 @app.put("/api/fairs/{fair_id}", response_model=dict)
@@ -271,36 +380,75 @@ def delete_fair(fair_id: str, db: Session = Depends(get_db)):
 @app.post("/api/scrape-url")
 def scrape_url(url_data: dict, db: Session = Depends(get_db)):
     url = url_data.get("url", "")
+    fair_id = url_data.get("fair_id")
     if not url:
         raise HTTPException(status_code=400, detail="URL required")
 
+    from datetime import datetime
+
+    attachments_text = ""
+    if fair_id:
+        fair = db.query(Fair).filter(Fair.id == fair_id).first()
+        if fair and fair.attachments:
+            all_text = []
+            for att in fair.attachments:
+                att_url = att.get("url", "") if isinstance(att, dict) else str(att)
+                if not att_url:
+                    continue
+                full_path = Path("." + att_url) if att_url.startswith("/") else Path(att_url)
+                if full_path.exists():
+                    ext = full_path.suffix.lower()
+                    try:
+                        if ext == ".pdf":
+                            import fitz
+                            doc = fitz.open(full_path)
+                            text = "\n".join([page.get_text() for page in doc])
+                            doc.close()
+                            all_text.append(f"\n=== {full_path.name} ===\n{text[:3000]}")
+                        elif ext in [".txt", ".md"]:
+                            text = full_path.read_text(encoding="utf-8", errors="ignore")
+                            all_text.append(f"\n=== {full_path.name} ===\n{text[:3000]}")
+                    except Exception:
+                        pass
+            attachments_text = "\n\n".join(all_text)
+
     result = {
         "url": url,
+        "fair_id": fair_id,
         "title": "",
         "description": "",
         "text_content": "",
+        "summary": "",
         "error": "",
         "ai_data": None,
-        "logs": []
+        "logs": [],
+        "attachments_text": attachments_text[:2000] if attachments_text else ""
     }
 
+    def log(step: str, message: str, status: str = "ok"):
+        result["logs"].append({
+            "ts": datetime.now().strftime("%H:%M:%S"),
+            "step": step,
+            "message": message,
+            "status": status
+        })
+
     import re
-    from datetime import datetime
 
     try:
-        result["logs"].append({"step": "START", "message": f"Inizio raccolta dati da {url}", "status": "ok"})
+        log("START", f"Inizio raccolta dati da {url}")
 
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "Accept-Language": "en-US,en;q=0.9,it-IT;q=0.8,it;q=0.7",
         }
-        resp = requests.get(url, timeout=15, verify=False, headers=headers, allow_redirects=True)
-        result["logs"].append({"step": "HTTP_GET", "message": f"Richiesta HTTP: status {resp.status_code}", "status": "ok" if resp.status_code == 200 else "warning"})
+        resp = requests.get(url, timeout=20, verify=False, headers=headers, allow_redirects=True)
+        log("HTTP", f"Status: {resp.status_code}", "ok" if resp.status_code == 200 else "warning")
 
         html_content = resp.text
         if not html_content:
             result["error"] = "No content"
-            result["logs"].append({"step": "HTTP_ERROR", "message": "Nessun contenuto ricevuto", "status": "error"})
+            log("ERROR", "Nessun contenuto ricevuto", "error")
             return result
 
         from bs4 import BeautifulSoup
@@ -309,127 +457,186 @@ def scrape_url(url_data: dict, db: Session = Depends(get_db)):
         title = soup.find("title")
         result["title"] = title.text.strip() if title else ""
         if result["title"]:
-            result["logs"].append({"step": "TITLE", "message": f"Titolo: {result['title'][:50]}", "status": "ok"})
+            log("TITLE", f"Titolo: {result['title'][:60]}")
 
         meta_desc = soup.find("meta", attrs={"name": "description"})
-        result["description"] = meta_desc.get("content", "") if meta_desc else ""
-        if result["description"]:
-            result["logs"].append({"step": "META_DESC", "message": "Meta description estratta", "status": "ok"})
+        if meta_desc:
+            result["description"] = meta_desc.get("content", "")[:500]
+            log("META", "Meta description estratta")
 
-        for tag in soup(["script", "style", "nav", "footer", "header"]):
+        for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
             tag.decompose()
-        text_content = soup.get_text(separator=" ", strip=True)
-        text_content = " ".join(text_content.split())
-        result["text_content"] = text_content[:5000]
-        result["logs"].append({"step": "CLEAN_HTML", "message": f"Testo estratto: {len(text_content)} char", "status": "ok"})
 
-        ai_data = {}
+        h1_texts = [h.get_text(strip=True) for h in soup.find_all("h1")]
+        h2_texts = [h.get_text(strip=True) for h in soup.find_all("h2")]
+        h3_texts = [h.get_text(strip=True) for h in soup.find_all("h3")]
+        
+        structured_text = "\n".join([
+            "TITOLI H1: " + " | ".join(h1_texts[:5]),
+            "TITOLI H2: " + " | ".join(h2_texts[:10]),
+            "TITOLI H3: " + " | ".join(h3_texts[:15]),
+        ])
+
+        contact_patterns = [
+            r"[\w\.-]+@[\w\.-]+\.\w+",
+            r"\+?\d{1,3}[-.\s]?\(?\d{1,4}\)?[-.\s]?\d{1,4}[-.\s]?\d{1,9}",
+            r"tel[:\s]*(\+?[\d\s\-\(\)]+)",
+            r"phone[:\s]*(\+?[\d\s\-\(\)]+)",
+        ]
+        all_text = soup.get_text(separator=" ", strip=True)
+        emails = list(set(re.findall(r"[\w\.-]+@[\w\.-]+\.\w+", all_text)))
+        phones = list(set(re.findall(r"\+?\d{1,3}[-.\s]?\(?\d{1,4}\)?[-.\s]?\d{1,4}[-.\s]?\d{1,9}", all_text)))
+        
+        contact_info = []
+        if emails:
+            contact_info.append("Email: " + ", ".join(emails[:5]))
+        if phones:
+            contact_info.append("Tel: " + ", ".join(phones[:3]))
 
         date_patterns = [
-            r"\b(\d{1,2})\s*(?:-giu|-lug|-ago|-set|-ott|-nov|-dic|gen|feb|mar|apr|mag|giu|lug|ago|set|ott|nov|dic)\w*\s*(\d{2,4})",
-            r"\b(\d{1,2})\s*(?:January|February|March|April|May|June|July|August|September|October|November|December)\s*(\d{4})",
-            r"\b(\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4})",
+            r"(\d{1,2}\s+(?:gen|feb|mar|apr|mag|giu|lug|ago|set|ott|nov|dic)\w*\s+\d{4})",
+            r"(\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4})",
+            r"(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})",
+            r"(\d{4})",
         ]
+        all_dates = []
+        current_year = datetime.now().year
         for pat in date_patterns:
-            match = re.search(pat, text_content, re.IGNORECASE)
-            if match:
-                ai_data["dates"] = match.group(0)
-                result["logs"].append({"step": "DATE", "message": f"Data trovata: {match.group(0)}", "status": "ok"})
-                break
+            matches = re.findall(pat, all_text, re.IGNORECASE)
+            for m in matches:
+                year_match = re.search(r"\d{4}", m)
+                if year_match:
+                    year = int(year_match.group())
+                    if year >= current_year:
+                        all_dates.append(m)
+        
+        future_dates = list(set(all_dates))[:10]
 
-        location_patterns = [
-            r"\b(?:presso|a|in|at)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})",
-            r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}),\s*[A-Z]{2}",
-            r"Fiera\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)",
-            r"Centrexpo\s+([A-Z][a-z]+)",
-        ]
-        cities = ["Milano", "Roma", "Torino", "Bologna", "Firenza", "Napoli", "Genova", "Verona", "Padova", "Vicenza", "Bari", "Catania", "Reggio Emilia", "Modena", "Reggio Emilia"]
-        for city in cities:
-            if city.lower() in text_content.lower():
-                ai_data["location"] = city
-                result["logs"].append({"step": "LOCATION", "message": f"Location: {city}", "status": "ok"})
-                break
-        if "location" not in ai_data:
-            for pat in location_patterns:
-                match = re.search(pat, text_content, re.IGNORECASE)
-                if match:
-                    ai_data["location"] = match.group(1).strip()
-                    result["logs"].append({"step": "LOCATION", "message": f"Location: {match.group(1)}", "status": "ok"})
-                    break
-
-        sector_keywords = {
-            "food": ["cibo", "food", "alimentation", "gastronomia"],
-            "tech": ["tech", "tecnologia", "ict", "digital", "innovation"],
-            "build": ["costruzioni", "building", "arch", "real estate"],
-            "agro": ["agricoltura", "agro", "farm", "food chain"],
-            "auto": ["auto", "automotive", "motors", "veicoli"],
-            "health": ["salute", "health", "medical", "pharma"],
-            " textile": ["tessile", "textile", "fashion", "abbigliamento"],
-            "logistics": ["logistica", "logistics", "trasporti"],
-            "tourism": ["turismo", "tourism", "hospitality"],
-            "energy": ["energia", "energy", "green", "rinnovabili"],
-        }
-        for sector, keywords in sector_keywords.items():
-            for kw in keywords:
-                if kw in text_content.lower():
-                    ai_data["sector"] = sector.capitalize()
-                    result["logs"].append({"step": "SECTOR", "message": f"Settore: {sector}", "status": "ok"})
-                    break
-            if "sector" in ai_data:
-                break
-
-        org_patterns = [
-            r"organizzato\s+da\s+([A-Z][a-zA-Z\s]+?)(?:\.|,|$)",
-            r"organizer[:\s]+([A-Z][a-zA-Z\s]+?)(?:\.|,|$)",
-            r"by\s+([A-Z][a-zA-Z\s]+?)(?:\.|,|http)",
-        ]
-        for pat in org_patterns:
-            match = re.search(pat, text_content, re.IGNORECASE)
-            if match:
-                ai_data["organizer"] = match.group(1).strip()[:50]
-                result["logs"].append({"step": "ORGANIZER", "message": f"Organizzatore: {match.group(1)[:30]}", "status": "ok"})
-                break
-
+        venue_cities = ["milano", "roma", "torino", "bologna", "firenze", "napoli", "genova", "verona", "padova", "vicenza", "bari", "catania", "rimini", "modena", "pesaro"]
         venue_patterns = [
-            r"(?:fiere?|centro)\s+([A-Z][a-zA-Z\s]+?)(?:\.|,|$)",
-            r"venue[:\s]+([A-Z][a-zA-Z\s]+?)(?:\.|,|$)",
-            r"(?:举|展)m([A-Z][a-zA-Z\s]+?)(?:\.|,|$)",
+            r"(?:fiera|centro\s+fieristico|centro\s+congressi|quartiere\s+fieristico)\s+([^,\.]+)",
+            r"(?:presso|a|in)\s+([^,\.]+?(?:fiera|centro|palazzo|hub))",
         ]
+        venues_found = []
         for pat in venue_patterns:
-            match = re.search(pat, text_content, re.IGNORECASE)
-            if match:
-                ai_data["venue"] = match.group(1).strip()[:50]
-                result["logs"].append({"step": "VENUE", "message": f"Venue: {match.group(1)[:30]}", "status": "ok"})
-                break
+            matches = re.findall(pat, all_text, re.IGNORECASE)
+            venues_found.extend([m.strip()[:50] for m in matches])
+        
+        venue_candidates = []
+        text_lower = all_text.lower()
+        for city in venue_cities:
+            if city in text_lower:
+                venue_candidates.append(city.capitalize())
+        venue_candidates.extend(list(set(venues_found))[:3])
 
-        visitors_match = re.search(r"(\d{1,3}(?:\.\d{3})*)\s*(?:visitatori|visitors|affluenza)", text_content, re.IGNORECASE)
-        if visitors_match:
-            ai_data["expected_visitors"] = int(visitors_match.group(1).replace(".", ""))
-            result["logs"].append({"step": "VISITORS", "message": f"Visitatori: {ai_data['expected_visitors']}", "status": "ok"})
+        text_content = " ".join(all_text.split())
+        result["text_content"] = text_content[:15000]
+        log("HTML", f"Testo estratto: {len(text_content)} char")
 
-        exhibitors_match = re.search(r"(\d{1,3}(?:\.\d{3})*)\s*(?:espositori|exhibitors|stand)", text_content, re.IGNORECASE)
-        if exhibitors_match:
-            ai_data["exhibitors_count"] = int(exhibitors_match.group(1).replace(".", ""))
-            result["logs"].append({"step": "EXHIBITORS", "message": f"Espositori: {ai_data['exhibitors_count']}", "status": "ok"})
+        structured_data = f"""
+=== DATI ESTRATTI DALLA PAGINA ===
+
+TITOLO: {result['title']}
+
+DESCRIZIONE META: {result['description']}
+
+TITOLI PAGINA:
+{structured_text}
+
+DATE FUTURE TROVATE: {', '.join(future_dates) if future_dates else 'N/A'}
+
+CITTA'/LOCATION: {', '.join(venue_candidates) if venue_candidates else 'N/A'}
+
+CONTATTI: {' | '.join(contact_info) if contact_info else 'N/A'}
+
+CONTENUTO PAGINA (primi 3000 char):
+{text_content[:3000]}
+
+ALLEGATI (estratti da PDF/documenti):
+{result['attachments_text'][:3000] if result['attachments_text'] else 'Nessun allegato'}
+"""
+
+        settings = db.query(Settings).first()
+
+        if settings and settings.ollama_model:
+            log("OLLAMA", f"Analisi con Ollama: {settings.ollama_model}")
+            try:
+                client = OllamaClient(settings.ollama_url)
+                model_name = str(settings.ollama_model)
+
+                prompt = f"""Sei un esperto analyst di fiere commerciali. Analizza questa pagina web di una fiera e i suoi allegati (PDF/documenti), estrai tutte le informazioni rilevanti e combinale per ottenere dati completi e accurati.
+
+{structured_data}
+
+Istruzioni:
+1. Combina e verifica i dati trovati nella pagina web e negli allegati
+2. In caso di discrepanze, usa i dati più recenti/aggiornati (gli allegati hanno priorità per dati ufficiali)
+3. Estrai il NOME UFFICIALE della fiera
+4. Identifica la PROSSIMA DATA della fiera (la più vicina nel futuro)
+5. Trova l'ORGANIZZATORE della fiera  
+6. Identifica il SETTORE merceologico principale
+7. Trova il LUOGO/VENUE dove si tiene
+8. Estrai tutti i DATI DI CONTATTO (email, telefono, indirizzo)
+9. Estrai il NUMERO VISITATORI previsti (se indicato)
+10. Estrai il NUMERO ESPOSITORI (se indicato)
+11. Estrai il COSTO dello stand (se indicato)
+12. Estrai la FREQUENZA della fiera (annuale, biennale, triennale)
+13. Scrivi un RIASSUNTO di almeno 500 parole sulla fiera basandoti sul contenuto combinato di pagina web e allegati
+
+Rispondi in JSON:
+{{
+  "name": "nome fiera",
+  "next_date": "data prossima edizione",
+  "organizer": "nome organizzatore",
+  "sector": "settore merceologico",
+  "venue": "nome venue",
+  "location": "città",
+  "email": "email contatto",
+  "phone": "telefono",
+  "expected_visitors": numero,
+  "exhibitors_count": numero,
+  "stand_cost": numero,
+  "frequency": "annuale|biennale|triennale",
+  "summary": "riassunto di almeno 500 parole sulla fiera"
+}}
+
+Rispondi SOLO con JSON valido, niente altro testo."""
+
+                ai_resp = client.chat(model_name, prompt)
+                if ai_resp:
+                    match = re.search(r"\{[\s\S]*\}", ai_resp)
+                    if match:
+                        import json as json_lib
+                        ai_data = json_lib.loads(match.group())
+                        result["ai_data"] = ai_data
+                        
+                        for k, v in ai_data.items():
+                            if v:
+                                log("AI", f"{k}: {str(v)[:50]}")
+                        
+                        if ai_data.get("summary"):
+                            result["summary"] = ai_data["summary"]
+                            log("SUMMARY", f"Riassunto generato: {len(ai_data['summary'])} parole")
+                    else:
+                        log("AI", "Nessun JSON nella risposta", "warning")
+                else:
+                    log("AI", "Nessuna risposta", "warning")
+
+            except Exception as e:
+                log("AI_ERROR", str(e)[:60], "warning")
+        else:
+            log("LOCAL", "Ollama non disponibile - dati base estratti")
 
         if not result["title"]:
-            result["title"] = ai_data.get("name", "")
-        if not result["description"] and not ai_data.get("description"):
-            desc_len = min(200, len(text_content))
-            result["description"] = text_content[:desc_len]
-            if result["description"]:
-                result["logs"].append({"step": "DESCRIPTION", "message": "Descrizione generata dal testo", "status": "ok"})
-
-        if ai_data:
-            result["ai_data"] = ai_data
-            result["logs"].append({"step": "PARSE_DONE", "message": "Parsing locale completato", "status": "ok"})
+            result["title"] = result.get("ai_data", {}).get("name", "")
+        if not result["description"] and text_content:
+            result["description"] = text_content[:400]
 
     except Exception as e:
         result["error"] = str(e)
-        result["logs"].append({"step": "ERROR", "message": f"Errore: {str(e)}", "status": "error"})
+        log("ERROR", str(e)[:60], "error")
 
-    result["logs"].append({"step": "END", "message": "Raccolta completata", "status": "ok"})
-
+    log("END", "Raccolta completata")
     return result
 
 
@@ -439,56 +646,63 @@ def analyze_fair(fair_id: str, db: Session = Depends(get_db)):
     if not fair:
         raise HTTPException(status_code=404, detail="Fair not found")
 
-    result = {
-        "fair_id": fair_id,
-        "logs": [],
-        "data": {},
-        "attachments_text": ""
-    }
+    broadcast_notification(f"Avvio analisi per {fair.name}...", "info", fair_id)
+    
+    asyncio.create_task(run_analyze_fair(fair_id))
+    
+    return {"status": "started", "fair_id": fair_id, "message": "Analisi avviata in background"}
 
-    result["logs"].append({"step": "START", "message": f"Inizio analisi completa per {fair.name}", "status": "ok"})
 
-    import os
-    from pathlib import Path
-    attachments = fair.attachments or []
-    if attachments:
-        result["logs"].append({"step": "ATTACHMENTS", "message": f"Trovati {len(attachments)} allegati", "status": "ok"})
-        all_text = []
-        for att in attachments:
-            att_url = att.get("url", "") if isinstance(att, dict) else str(att)
-            if not att_url:
-                continue
-            full_path = Path("." + att_url) if att_url.startswith("/") else Path(att_url)
-            if full_path.exists():
-                ext = full_path.suffix.lower()
-                try:
-                    if ext == ".pdf":
-                        import fitz
-                        doc = fitz.open(full_path)
-                        text = "\n".join([page.get_text() for page in doc])
-                        doc.close()
-                        all_text.append(f"\n=== {full_path.name} ===\n{text[:2000]}")
-                        result["logs"].append({"step": "PDF_EXTRACT", "message": f"Estratto da {full_path.name}: {len(text)} char", "status": "ok"})
-                    elif ext in [".txt", ".md"]:
-                        text = full_path.read_text(encoding="utf-8", errors="ignore")
-                        all_text.append(f"\n=== {full_path.name} ===\n{text[:2000]}")
-                        result["logs"].append({"step": "TXT_EXTRACT", "message": f"Estratto da {full_path.name}", "status": "ok"})
-                except Exception as e:
-                    result["logs"].append({"step": "ATTACH_ERROR", "message": f"Errore {full_path.name}: {str(e)}", "status": "warning"})
-        result["attachments_text"] = "\n\n".join(all_text)[:5000]
-    else:
-        result["logs"].append({"step": "ATTACHMENTS", "message": "Nessun allegato trovato", "status": "warning"})
-
-    fair.scraped_data = {
-        "analyzed_at": datetime.now().isoformat(),
-        "attachments_text": result["attachments_text"][:500] if result["attachments_text"] else None
-    }
-    db.commit()
-
-    result["logs"].append({"step": "SAVE", "message": "Dati allegati salvati nel record", "status": "ok"})
-    result["logs"].append({"step": "END", "message": "Analisi completata", "status": "ok"})
-
-    return result
+async def run_analyze_fair(fair_id: str):
+    from .db import SessionLocal
+    from .models import Fair
+    
+    db = SessionLocal()
+    try:
+        fair = db.query(Fair).filter(Fair.id == fair_id).first()
+        if not fair:
+            broadcast_notification("Fiera non trovata", "error", fair_id)
+            return
+        
+        attachments = fair.attachments or []
+        attachments_text = ""
+        
+        if attachments:
+            all_text = []
+            for att in attachments:
+                att_url = att.get("url", "") if isinstance(att, dict) else str(att)
+                if not att_url:
+                    continue
+                full_path = Path("." + att_url) if att_url.startswith("/") else Path(att_url)
+                if full_path.exists():
+                    ext = full_path.suffix.lower()
+                    try:
+                        if ext == ".pdf":
+                            import fitz
+                            doc = fitz.open(full_path)
+                            text = "\n".join([page.get_text() for page in doc])
+                            doc.close()
+                            all_text.append(f"\n=== {full_path.name} ===\n{text[:2000]}")
+                            broadcast_notification(f"Estratto PDF {full_path.name}", "info", fair_id)
+                        elif ext in [".txt", ".md"]:
+                            text = full_path.read_text(encoding="utf-8", errors="ignore")
+                            all_text.append(f"\n=== {full_path.name} ===\n{text[:2000]}")
+                    except Exception as e:
+                        broadcast_notification(f"Errore: {str(e)}", "warning", fair_id)
+            attachments_text = "\n\n".join(all_text)[:5000]
+        
+        fair.scraped_data = {
+            "analyzed_at": datetime.now().isoformat(),
+            "attachments_text": attachments_text[:500] if attachments_text else None
+        }
+        db.commit()
+        
+        broadcast_notification(f"Analisi completata per {fair.name}", "success", fair_id)
+        
+    except Exception as e:
+        broadcast_notification(f"Errore analisi: {str(e)}", "error", fair_id)
+    finally:
+        db.close()
 
 
 def analyze_fair_task(fair_id: str):

@@ -554,7 +554,7 @@
         const resp = await fetch('/api/scrape-url', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({url: url})
+          body: JSON.stringify({url: url, fair_id: fairId})
         });
         
         const data = await resp.json();
@@ -580,12 +580,20 @@
           const ai = data.ai_data;
           if (ai.name) { document.getElementById('fairName').value = ai.name; saveField('name'); updatedFields.push('nome'); }
           if (ai.location) { document.getElementById('fairLocation').value = ai.location; saveField('location'); updatedFields.push('location'); }
-          if (ai.dates) { document.getElementById('fairDates').value = ai.dates; saveField('dates'); updatedFields.push('date'); }
+          if (ai.next_date) { document.getElementById('fairDates').value = ai.next_date; saveField('dates'); updatedFields.push('date'); }
           if (ai.sector) { document.getElementById('fairSector').value = ai.sector; saveField('sector'); updatedFields.push('settore'); }
           if (ai.organizer) { document.getElementById('fairOrganizer').value = ai.organizer; saveField('organizer'); updatedFields.push('organizzatore'); }
           if (ai.venue) { document.getElementById('fairVenue').value = ai.venue; saveField('venue'); updatedFields.push('venue'); }
           if (ai.expected_visitors) { document.getElementById('fairExpectedVisitors').value = ai.expected_visitors; saveField('expected_visitors'); updatedFields.push('visitatori'); }
           if (ai.exhibitors_count) { document.getElementById('fairExhibitorsCount').value = ai.exhibitors_count; saveField('exhibitors_count'); updatedFields.push('espositori'); }
+          if (ai.stand_cost) { document.getElementById('fairStandCost').value = ai.stand_cost; saveField('stand_cost'); updatedFields.push('stand_cost'); }
+          if (ai.frequency) { document.getElementById('fairFrequency').value = ai.frequency; saveField('frequency'); updatedFields.push('frequenza'); }
+          if (ai.email && !document.getElementById('fairEmail').value) { document.getElementById('fairEmail').value = ai.email; saveField('fair_email'); updatedFields.push('email'); }
+          if (ai.phone && !document.getElementById('fairAddress').value) { document.getElementById('fairAddress').value = ai.phone; saveField('address'); updatedFields.push('telefono'); }
+        }
+        
+        if (data.attachments_text) {
+          logContainer().innerHTML += '<div class="text-info mt-1"><i class="fas fa-file-pdf"></i> Allegati analizzati</div>';
         }
         
         if (data.title && !document.getElementById('fairName').value) {
