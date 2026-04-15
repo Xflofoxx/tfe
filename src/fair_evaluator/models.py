@@ -1,4 +1,4 @@
-from sqlalchemy import JSON, Column, Index, Integer, String, Text, ForeignKey, Table, Float
+from sqlalchemy import JSON, Column, Index, Integer, String, Text, ForeignKey, Table, Float, Date
 from sqlalchemy.orm import relationship
 
 from .db import Base
@@ -31,6 +31,32 @@ class Contact(Base):
 
     def __repr__(self):
         return f"<Contact {self.name} ({self.email})>"
+
+
+class CommercialProposal(Base):
+    __tablename__ = "commercial_proposals"
+    __table_args__ = (
+        Index("idx_proposal_fair", "fair_id"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    fair_id = Column(String, ForeignKey('fairs.id'), nullable=False)
+    name = Column(String, nullable=False)
+    file_path = Column(String, nullable=True)
+    file_name = Column(String, nullable=True)
+    total_amount = Column(Float, nullable=True)
+    stand_size = Column(Integer, nullable=True)
+    stand_location = Column(String, nullable=True)
+    services = Column(JSON, nullable=True)
+    status = Column(String, default="ricevuta")
+    notes = Column(Text, nullable=True)
+    received_at = Column(String, nullable=True)
+    expires_at = Column(String, nullable=True)
+    
+    fair = relationship("Fair", backref="commercial_proposals")
+
+    def __repr__(self):
+        return f"<CommercialProposal {self.name} for {self.fair_id}>"
 
 
 class FairAnalysis(Base):

@@ -30,6 +30,14 @@ Valutare fiere commerciali per decidere se partecipare, analizzando dati da web 
 - linkedin, notes
 - fairs (relazione)
 
+### CommercialProposal
+- id, fair_id, name
+- file_path, file_name
+- total_amount, stand_size, stand_location
+- services (JSON)
+- status: ricevuta, in_trattativa, accettata, rifiutata
+- notes, received_at, expires_at
+
 ### FairAnalysis
 - id, fair_id, name
 - parameters (JSON): parametri analisi
@@ -65,50 +73,48 @@ Valutare fiere commerciali per decidere se partecipare, analizzando dati da web 
 - POST /api/fairs/{id}/evaluate - Valuta con AI
 
 ### Analisi Multipla
-- GET /api/fairs/{id}/analyses - Lista analisi fiera
-- POST /api/fairs/{id}/analyses - Crea analisi
-- GET /api/fairs/{id}/analyses/{analysis_id}
-- DELETE /api/fairs/{id}/analyses/{analysis_id} - Elimina analisi
+- GET/POST/DELETE /api/fairs/{id}/analyses
 
 ### Componenti Offerta
-- GET /api/fairs/{id}/components - Lista componenti
-- POST /api/fairs/{id}/components - Aggiungi componente
-- PUT /api/fairs/{id}/components/{comp_id}
-- DELETE /api/fairs/{id}/components/{comp_id}
+- GET/POST/PUT/DELETE /api/fairs/{id}/components
 
 ### Contatti Referenti
-- GET /api/fairs/{id}/contacts - Lista contatti riferimento
-- POST /api/fairs/{id}/contacts - Aggiungi contatto riferimento
-- DELETE /api/fairs/{id}/contacts/{contact_id}
+- GET/POST/DELETE /api/fairs/{id}/contacts
 
-### Allegati
+### Proposte Commerciali
+- GET/POST /api/fairs/{id}/proposals - Lista/Carica proposte
+- GET /api/fairs/{id}/proposals/{proposal_id}
+- DELETE /api/fairs/{id}/proposals/{proposal_id}
+
+### Allegati (Legacy)
 - POST /api/fairs/{id}/attachments - Aggiungi allegato
-- DELETE /api/fairs/{id}/attachments/{att_idx} - Rimuovi allegato
+- DELETE /api/fairs/{id}/attachments/{att_idx}
 
 ### Notifiche
 - GET /api/notifications/stream - SSE notifiche
-- GET /api/notifications - Ultime 20 notifiche
+- GET /api/notifications
 
 ### Cartella Rete
-- POST /api/scan-network-folder - Scansiona cartella SharePoint
-- POST /api/sync-from-network-folder - Sincronizza da cartella configurata
+- POST /api/scan-network-folder
+- POST /api/sync-from-network-folder
 
 ### Impostazioni
 - GET/POST /api/settings
 - GET /api/settings/ollama-status
 
 ### Report
-- POST /api/fairs/{id}/report - Genera report PDF/HTML
+- POST /api/fairs/{id}/report
 
 ## Flusso
 1. Crea fiera da URL o da scansione cartella SharePoint
 2. "Raccogli Dati" -> estrae da web + allegati -> Ollama o algoritmo locale
 3. Ollama genera JSON con dati + riassunto 500+ parole
-4. Crea analisi multiple con parametri diversi
-5. Definisci componenti offerta (stand, marketing, etc.)
-6. Aggiungi contatti referenti
-7. "Valuta" - confronta con strategia marketing
-8. Genera report PDF/HTML
+4. Carica proposte commerciali (PDF) -> estrazione automatica importi, dimensioni stand
+5. Crea analisi multiple con parametri diversi
+6. Definisci componenti offerta (stand, marketing, etc.)
+7. Aggiungi contatti referenti
+8. "Valuta" - confronta con strategia marketing
+9. Genera report PDF/HTML
 
 ## Componenti Offerta
 Ogni componente ha:
@@ -122,10 +128,15 @@ Ogni componente ha:
 
 Totale offerta = somma total_price componenti
 
+## Proposte Commerciali
+Il sistema estrae automaticamente da PDF:
+- total_amount: importo totale proposta
+- stand_size: dimensione stand (mq)
+- stand_location: posizione (angolo, centro, etc.)
+
 ## UI
 - Material Design coerente
+- Scheda fiera: header espanso, stats row, accordion collapsible
 - Toast notifications in alto a destra
 - Dashboard con notifiche push e attività recenti
-- Form allineati creazione/dettaglio
 - Lista fiere con colonna anno separata
-- ordinamento per nome, anno, data, location, settore

@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from .db import Base, SessionLocal, engine
-from .models import Fair, Settings, Contact, FairAnalysis, OfferComponent
+from .models import Fair, Settings, Contact, FairAnalysis, OfferComponent, CommercialProposal
 from .services.ollama import OllamaClient
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -55,6 +55,8 @@ REPORTS_DIR = Path("./data/reports")
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 STRATEGY_DIR = Path("./data/strategy")
 STRATEGY_DIR.mkdir(parents=True, exist_ok=True)
+PROPOSALS_DIR = Path("./data/proposals")
+PROPOSALS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def get_db():
@@ -737,6 +739,73 @@ def remove_fair_contact(fair_id: str, contact_id: int, db: Session = Depends(get
         fair.contact_list.remove(contact)
     db.commit()
     return {"status": "removed", "id": contact_id}
+
+
+@app.post("/api/fairs/{fair_id}/proposals", response_model=dict)
+async def upload_proposal(fair_id: str, file: UploadFile = File(...), db: Session = Depends(get_db)):
+    fair = db.query(Fair).filter(Fair.id == fair_id).first()
+    if not fair:
+        raise HTTPException(status_code=404, detail="Fair not found")
+    
+    file_id = str(uuid4())
+    file_path = PROPOSALS_DIR / f"{file_id}_{file.filename}"
+    with open(file_path, "wb") as f:
+        f.write(await file.read())
+    
+    proposal = CommercialProposal(
+        fair_id=fair_id,
+        name=file.filename,
+        file_path=str(file_path),
+        file_name=file.filename,
+        received_at=datetime.now().isoformat()
+    )
+    
+    try:
+        import fitz
+        doc = fitz.open(file_path)
+        text = "\n".join([page.get_text() for page in doc])
+        doc.close()
+        
+        import re
+        amount_match = re.search(r"(?:€|euro|EUR)\s*(\d{1,3}(?:[.,]\d{3})*)", text, re.IGNORECASE)
+        if amount_match:
+            proposal.total_amount = float(amount_match.group(1).replace(".", "").replace(",", "."))
+        
+        stand_match = re.search(r"(\d+)\s*(?:mq|m2|metri quadri)", text, re.IGNORECASE)
+        if stand_match:
+            proposal.stand_size = int(stand_match.group(1))
+        
+        location_kws = ["angolo", "centro", "ingresso", "padiglione", "hall"]
+        for kw in location_kws:
+            if kw in text.lower():
+                proposal.stand_location = kw
+                break
+    except Exception:
+        pass
+    
+    db.add(proposal)
+    db.commit()
+    db.refresh(proposal)
+    return {"id": proposal.id, "status": "uploaded"}
+
+
+@app.get("/api/fairs/{fair_id}/proposals", response_model=list[dict])
+def list_fair_proposals(fair_id: str, db: Session = Depends(get_db)):
+    fair = db.query(Fair).filter(Fair.id == fair_id).first()
+    if not fair:
+        raise HTTPException(status_code=404, detail="Fair not found")
+    proposals = db.query(CommercialProposal).filter(CommercialProposal.fair_id == fair_id).all()
+    return [{"id": p.id, "name": p.name, "file_name": p.file_name, "total_amount": p.total_amount, "stand_size": p.stand_size, "stand_location": p.stand_location, "status": p.status, "received_at": p.received_at} for p in proposals]
+
+
+@app.delete("/api/fairs/{fair_id}/proposals/{proposal_id}", response_model=dict)
+def delete_proposal(fair_id: str, proposal_id: int, db: Session = Depends(get_db)):
+    proposal = db.query(CommercialProposal).filter(CommercialProposal.id == proposal_id, CommercialProposal.fair_id == fair_id).first()
+    if not proposal:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+    db.delete(proposal)
+    db.commit()
+    return {"status": "deleted", "id": proposal_id}
 
 
 @app.post("/api/scrape-url")
