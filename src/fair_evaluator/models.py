@@ -1,4 +1,4 @@
-from sqlalchemy import JSON, Column, Index, Integer, String, Text, ForeignKey, Table
+from sqlalchemy import JSON, Column, Index, Integer, String, Text, ForeignKey, Table, Float
 from sqlalchemy.orm import relationship
 
 from .db import Base
@@ -31,6 +31,49 @@ class Contact(Base):
 
     def __repr__(self):
         return f"<Contact {self.name} ({self.email})>"
+
+
+class FairAnalysis(Base):
+    __tablename__ = "fair_analyses"
+    __table_args__ = (
+        Index("idx_analysis_fair", "fair_id"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    fair_id = Column(String, ForeignKey('fairs.id'), nullable=False)
+    name = Column(String, nullable=True)
+    parameters = Column(JSON, nullable=True)
+    result = Column(JSON, nullable=True)
+    summary = Column(Text, nullable=True)
+    created_at = Column(String, nullable=True)
+    
+    fair = relationship("Fair", backref="analyses")
+
+    def __repr__(self):
+        return f"<FairAnalysis {self.id} for {self.fair_id}>"
+
+
+class OfferComponent(Base):
+    __tablename__ = "offer_components"
+    __table_args__ = (
+        Index("idx_component_fair", "fair_id"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    fair_id = Column(String, ForeignKey('fairs.id'), nullable=False)
+    name = Column(String, nullable=False)
+    category = Column(String, nullable=True)
+    description = Column(Text, nullable=True)
+    quantity = Column(Integer, nullable=True)
+    unit_price = Column(Float, nullable=True)
+    total_price = Column(Float, nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(String, nullable=True)
+    
+    fair = relationship("Fair", backref="offer_components")
+
+    def __repr__(self):
+        return f"<OfferComponent {self.name} for {self.fair_id}>"
 
 
 class Fair(Base):

@@ -40,7 +40,19 @@
         </nav>
       </div>
       <div class="col-md-10 p-4">
+        <div id="notificationsPanel" class="mb-3" style="position: fixed; top: 20px; right: 20px; z-index: 9999; max-width: 350px; right: 20px;"></div>
+        
         <h3 class="mb-4"><i class="fas fa-chart-line me-2"></i>Dashboard</h3>
+        
+        <div class="card mb-4">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="fas fa-bell me-2"></i>Attività Recenti</h5>
+            <button class="btn btn-sm btn-outline-secondary" onclick="loadRecentNotifications()"><i class="fas fa-sync"></i></button>
+          </div>
+          <div class="card-body p-0" id="recentNotifications">
+            <div class="text-center text-muted py-3"><i class="fas fa-spinner fa-spin"></i> Caricamento...</div>
+          </div>
+        </div>
         
         <div class="row mb-4">
           <div class="col-md-3">
@@ -156,5 +168,53 @@
       </div>
     </div>
   </div>
+  <script>
+    let eventSource;
+    
+    function loadRecentNotifications() {
+      fetch('/api/notifications')
+        .then(r => r.json())
+        .then(data => {
+          const container = document.getElementById('recentNotifications');
+          if (data.length === 0) {
+            container.innerHTML = '<div class="text-center text-muted py-3">Nessuna attività recente</div>';
+            return;
+          }
+          container.innerHTML = data.map(n => {
+            const icon = n.type === 'success' ? 'check-circle text-success' : n.type === 'error' ? 'exclamation-circle text-danger' : 'info-circle text-info';
+            const time = n.timestamp ? new Date(n.timestamp).toLocaleTimeString() : '';
+            return `<div class="d-flex align-items-center p-2 border-bottom"><i class="fas fa-${icon} me-2"></i><span class="flex-grow-1">${n.message}</span><small class="text-muted">${time}</small></div>`;
+          }).join('');
+        })
+        .catch(() => {
+          document.getElementById('recentNotifications').innerHTML = '<div class="text-center text-muted py-3">Errore caricamento</div>';
+        });
+    }
+    
+    function connectSSE() {
+      eventSource = new EventSource('/api/notifications/stream');
+      eventSource.onmessage = function(event) {
+        try {
+          const data = JSON.parse(event.data);
+          const panel = document.getElementById('notificationsPanel');
+          const toast = document.createElement('div');
+          toast.className = `alert alert-${data.type || 'info'} alert-dismissible fade show`;
+          toast.style.marginBottom = '10px';
+          toast.innerHTML = `<i class="fas fa-${data.type === 'success' ? 'check-circle' : data.type === 'error' ? 'exclamation-circle' : 'info-circle'} me-2"></i>${data.message}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>`;
+          panel.appendChild(toast);
+          setTimeout(() => toast.remove(), 8000);
+          loadRecentNotifications();
+        } catch (e) {}
+      };
+      eventSource.onerror = function() {
+        setTimeout(connectSSE, 5000);
+      };
+    }
+    
+    document.addEventListener('DOMContentLoaded', function() {
+      loadRecentNotifications();
+      connectSSE();
+    });
+  </script>
 </body>
 </html>

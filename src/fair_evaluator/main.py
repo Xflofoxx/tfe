@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from .db import Base, SessionLocal, engine
-from .models import Fair, Settings
+from .models import Fair, Settings, Contact, FairAnalysis, OfferComponent
 from .services.ollama import OllamaClient
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -432,7 +432,7 @@ def create_fair(fair_data: FairCreate, db: Session = Depends(get_db)):
 @app.get("/api/fairs", response_model=list[dict])
 def list_fairs(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     fairs = db.query(Fair).order_by(Fair.id.desc()).offset(skip).limit(limit).all()
-    return [{"id": f.id, "name": f.name or "N/A", "url": f.url or "", "description": f.description or "", "folder_path": f.folder_path or "", "site_url": f.company_website or "", "linkedin_url": f.company_linkedin or "", "fair_email": f.fair_email or "", "gallery": f.gallery or [], "attachments": f.attachments or [], "contacts": f.contacts or {}, "stand_cost": f.stand_cost or 0, "status": f.status or "in_valutazione", "scraped_data": f.scraped_data, "recommendation": f.recommendation or "", "instagram": f.instagram or "", "facebook": f.facebook or "", "tiktok": f.tiktok or ""} for f in fairs]
+    return [{"id": f.id, "name": f.name or "N/A", "year": f.year, "url": f.url or "", "description": f.description or "", "folder_path": f.folder_path or "", "site_url": f.company_website or "", "linkedin_url": f.company_linkedin or "", "fair_email": f.fair_email or "", "gallery": f.gallery or [], "attachments": f.attachments or [], "contacts": f.contacts or {}, "stand_cost": f.stand_cost or 0, "status": f.status or "in_valutazione", "scraped_data": f.scraped_data, "recommendation": f.recommendation or "", "instagram": f.instagram or "", "facebook": f.facebook or "", "tiktok": f.tiktok or ""} for f in fairs]
 
 
 @app.get("/api/fairs/{fair_id}", response_model=dict)
@@ -440,7 +440,7 @@ def get_fair(fair_id: str, db: Session = Depends(get_db)):
     fair = db.query(Fair).filter(Fair.id == fair_id).first()
     if not fair:
         raise HTTPException(status_code=404, detail="Fair not found")
-    return {"id": fair.id, "name": fair.name, "url": fair.url, "description": fair.description or "", "folder_path": fair.folder_path or "", "site_url": fair.company_website, "dates": fair.dates, "location": fair.location, "target_segments": fair.target_segments, "expected_visitors": fair.expected_visitors, "exhibitors_count": fair.exhibitors_count, "sources": fair.sources, "linkedin_url": fair.company_linkedin, "fair_email": fair.fair_email or "", "gallery": fair.gallery or [], "attachments": fair.attachments or [], "contacts": fair.contacts or {}, "stand_cost": fair.stand_cost or 0, "status": fair.status or "in_valutazione", "scraped_data": fair.scraped_data, "historical_data": fair.historical_data, "ROI_assessment": fair.ROI_assessment, "cost_estimate": fair.cost_estimate, "recommendation": fair.recommendation, "rationale": fair.rationale, "report_pdf_path": fair.report_pdf_path, "report_html_path": fair.report_html_path, "venue": fair.venue, "address": fair.address, "sector": fair.sector, "frequency": fair.frequency, "edition": fair.edition, "organizer": fair.organizer, "exhibitor_countries": fair.exhibitor_countries, "visitor_profile": fair.visitor_profile, "product_categories": fair.product_categories, "key_features": fair.key_features, "instagram": fair.instagram or "", "facebook": fair.facebook or "", "tiktok": fair.tiktok or ""}
+    return {"id": fair.id, "name": fair.name, "year": fair.year, "url": fair.url, "description": fair.description or "", "folder_path": fair.folder_path or "", "site_url": fair.company_website, "dates": fair.dates, "location": fair.location, "target_segments": fair.target_segments, "expected_visitors": fair.expected_visitors, "exhibitors_count": fair.exhibitors_count, "sources": fair.sources, "linkedin_url": fair.company_linkedin, "fair_email": fair.fair_email or "", "gallery": fair.gallery or [], "attachments": fair.attachments or [], "contacts": fair.contacts or {}, "stand_cost": fair.stand_cost or 0, "status": fair.status or "in_valutazione", "scraped_data": fair.scraped_data, "historical_data": fair.historical_data, "ROI_assessment": fair.ROI_assessment, "cost_estimate": fair.cost_estimate, "recommendation": fair.recommendation, "rationale": fair.rationale, "report_pdf_path": fair.report_pdf_path, "report_html_path": fair.report_html_path, "venue": fair.venue, "address": fair.address, "sector": fair.sector, "frequency": fair.frequency, "edition": fair.edition, "organizer": fair.organizer, "exhibitor_countries": fair.exhibitor_countries, "visitor_profile": fair.visitor_profile, "product_categories": fair.product_categories, "key_features": fair.key_features, "instagram": fair.instagram or "", "facebook": fair.facebook or "", "tiktok": fair.tiktok or ""}
 
 
 @app.put("/api/fairs/{fair_id}", response_model=dict)
@@ -571,9 +571,172 @@ def delete_fair(fair_id: str, db: Session = Depends(get_db)):
     fair = db.query(Fair).filter(Fair.id == fair_id).first()
     if not fair:
         raise HTTPException(status_code=404, detail="Fair not found")
+    db.query(FairAnalysis).filter(FairAnalysis.fair_id == fair_id).delete()
+    db.query(OfferComponent).filter(OfferComponent.fair_id == fair_id).delete()
     db.delete(fair)
     db.commit()
     return {"status": "deleted", "id": fair_id}
+
+
+@app.get("/api/fairs/{fair_id}/analyses", response_model=list[dict])
+def list_fair_analyses(fair_id: str, db: Session = Depends(get_db)):
+    fair = db.query(Fair).filter(Fair.id == fair_id).first()
+    if not fair:
+        raise HTTPException(status_code=404, detail="Fair not found")
+    analyses = db.query(FairAnalysis).filter(FairAnalysis.fair_id == fair_id).order_by(FairAnalysis.created_at.desc()).all()
+    return [{"id": a.id, "name": a.name, "parameters": a.parameters, "result": a.result, "summary": a.summary, "created_at": a.created_at} for a in analyses]
+
+
+class AnalysisCreate(BaseModel):
+    name: str | None = None
+    parameters: dict | None = None
+    result: dict | None = None
+    summary: str | None = None
+
+
+@app.post("/api/fairs/{fair_id}/analyses", response_model=dict)
+def create_fair_analysis(fair_id: str, data: AnalysisCreate, db: Session = Depends(get_db)):
+    fair = db.query(Fair).filter(Fair.id == fair_id).first()
+    if not fair:
+        raise HTTPException(status_code=404, detail="Fair not found")
+    analysis = FairAnalysis(
+        fair_id=fair_id,
+        name=data.name,
+        parameters=data.parameters,
+        result=data.result,
+        summary=data.summary,
+        created_at=datetime.now().isoformat()
+    )
+    db.add(analysis)
+    db.commit()
+    db.refresh(analysis)
+    return {"id": analysis.id, "status": "created"}
+
+
+@app.delete("/api/fairs/{fair_id}/analyses/{analysis_id}", response_model=dict)
+def delete_fair_analysis(fair_id: str, analysis_id: int, db: Session = Depends(get_db)):
+    analysis = db.query(FairAnalysis).filter(FairAnalysis.id == analysis_id, FairAnalysis.fair_id == fair_id).first()
+    if not analysis:
+        raise HTTPException(status_code=404, detail="Analysis not found")
+    db.delete(analysis)
+    db.commit()
+    return {"status": "deleted", "id": analysis_id}
+
+
+@app.get("/api/fairs/{fair_id}/components", response_model=list[dict])
+def list_fair_components(fair_id: str, db: Session = Depends(get_db)):
+    fair = db.query(Fair).filter(Fair.id == fair_id).first()
+    if not fair:
+        raise HTTPException(status_code=404, detail="Fair not found")
+    components = db.query(OfferComponent).filter(OfferComponent.fair_id == fair_id).all()
+    return [{"id": c.id, "name": c.name, "category": c.category, "description": c.description, "quantity": c.quantity, "unit_price": c.unit_price, "total_price": c.total_price, "notes": c.notes} for c in components]
+
+
+class ComponentCreate(BaseModel):
+    name: str
+    category: str | None = None
+    description: str | None = None
+    quantity: int | None = None
+    unit_price: float | None = None
+    notes: str | None = None
+
+
+@app.post("/api/fairs/{fair_id}/components", response_model=dict)
+def create_fair_component(fair_id: str, data: ComponentCreate, db: Session = Depends(get_db)):
+    fair = db.query(Fair).filter(Fair.id == fair_id).first()
+    if not fair:
+        raise HTTPException(status_code=404, detail="Fair not found")
+    total_price = (data.quantity or 1) * (data.unit_price or 0)
+    component = OfferComponent(
+        fair_id=fair_id,
+        name=data.name,
+        category=data.category,
+        description=data.description,
+        quantity=data.quantity,
+        unit_price=data.unit_price,
+        total_price=total_price,
+        notes=data.notes,
+        created_at=datetime.now().isoformat()
+    )
+    db.add(component)
+    db.commit()
+    db.refresh(component)
+    return {"id": component.id, "status": "created"}
+
+
+@app.put("/api/fairs/{fair_id}/components/{comp_id}", response_model=dict)
+def update_fair_component(fair_id: str, comp_id: int, data: ComponentCreate, db: Session = Depends(get_db)):
+    component = db.query(OfferComponent).filter(OfferComponent.id == comp_id, OfferComponent.fair_id == fair_id).first()
+    if not component:
+        raise HTTPException(status_code=404, detail="Component not found")
+    component.name = data.name
+    component.category = data.category
+    component.description = data.description
+    component.quantity = data.quantity
+    component.unit_price = data.unit_price
+    component.total_price = (data.quantity or 1) * (data.unit_price or 0)
+    component.notes = data.notes
+    db.commit()
+    return {"id": component.id, "status": "updated"}
+
+
+@app.delete("/api/fairs/{fair_id}/components/{comp_id}", response_model=dict)
+def delete_fair_component(fair_id: str, comp_id: int, db: Session = Depends(get_db)):
+    component = db.query(OfferComponent).filter(OfferComponent.id == comp_id, OfferComponent.fair_id == fair_id).first()
+    if not component:
+        raise HTTPException(status_code=404, detail="Component not found")
+    db.delete(component)
+    db.commit()
+    return {"status": "deleted", "id": comp_id}
+
+
+@app.get("/api/fairs/{fair_id}/contacts", response_model=list[dict])
+def list_fair_contacts(fair_id: str, db: Session = Depends(get_db)):
+    fair = db.query(Fair).filter(Fair.id == fair_id).first()
+    if not fair:
+        raise HTTPException(status_code=404, detail="Fair not found")
+    contacts = fair.contact_list
+    return [{"id": c.id, "name": c.name, "email": c.email, "phone": c.phone, "company": c.company, "role": c.role} for c in contacts]
+
+
+class ContactCreate(BaseModel):
+    name: str
+    email: str | None = None
+    phone: str | None = None
+    company: str | None = None
+    role: str | None = None
+    notes: str | None = None
+
+
+@app.post("/api/fairs/{fair_id}/contacts", response_model=dict)
+def add_fair_contact(fair_id: str, data: ContactCreate, db: Session = Depends(get_db)):
+    fair = db.query(Fair).filter(Fair.id == fair_id).first()
+    if not fair:
+        raise HTTPException(status_code=404, detail="Fair not found")
+    contact = Contact(
+        name=data.name,
+        email=data.email,
+        phone=data.phone,
+        company=data.company,
+        role=data.role,
+        notes=data.notes,
+        created_at=datetime.now().isoformat()
+    )
+    fair.contact_list.append(contact)
+    db.commit()
+    return {"id": contact.id, "status": "added"}
+
+
+@app.delete("/api/fairs/{fair_id}/contacts/{contact_id}", response_model=dict)
+def remove_fair_contact(fair_id: str, contact_id: int, db: Session = Depends(get_db)):
+    contact = db.query(Contact).filter(Contact.id == contact_id).first()
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    fair = db.query(Fair).filter(Fair.id == fair_id).first()
+    if contact in fair.contact_list:
+        fair.contact_list.remove(contact)
+    db.commit()
+    return {"status": "removed", "id": contact_id}
 
 
 @app.post("/api/scrape-url")

@@ -101,6 +101,7 @@
                 <thead class="table-light">
                   <tr>
                     <th onclick="sortTable('name')" data-sort="name">Nome <i class="fas fa-sort"></i></th>
+                    <th onclick="sortTable('year')" data-sort="year">Anno <i class="fas fa-sort"></i></th>
                     <th onclick="sortTable('dates')" data-sort="dates">Data <i class="fas fa-sort"></i></th>
                     <th onclick="sortTable('location')" data-sort="location">Location <i class="fas fa-sort"></i></th>
                     <th onclick="sortTable('sector')" data-sort="sector">Settore <i class="fas fa-sort"></i></th>
@@ -117,7 +118,7 @@
                       data-name="{{ fair.name | lower }}"
                       data-status="{{ fair.status }}"
                       data-location="{{ fair.location | default('') }}"
-                      data-year="{{ fair.dates[0][:4] if fair.dates and fair.dates[0] else '' }}"
+                      data-year="{{ fair.year if fair.year else '' }}"
                       data-dates="{{ fair.dates[0] if fair.dates and fair.dates[0] else '' }}"
                       data-sector="{{ fair.sector | lower | default('') }}"
                       data-expected_visitors="{{ fair.expected_visitors or 0 }}"
@@ -127,6 +128,7 @@
                       <a href="/fairs/{{ fair.id }}" class="text-decoration-none fw-semibold">{{ fair.name }}</a>
                       {% if fair.venue %}<br><small class="text-muted">{{ fair.venue }}</small>{% endif %}
                     </td>
+                    <td>{{ fair.year if fair.year else '-' }}</td>
                     <td>{{ fair.dates[0] if fair.dates and fair.dates[0] else '-' }}</td>
                     <td>{{ fair.location if fair.location else '-' }}</td>
                     <td>{% if fair.sector %}<span class="badge bg-success">{{ fair.sector }}</span>{% else %}-{% endif %}</td>
@@ -226,6 +228,7 @@
         
         switch(sortColumn) {
           case 'name': valA = a.dataset.name; valB = b.dataset.name; break;
+          case 'year': valA = parseInt(a.dataset.year) || 0; valB = parseInt(b.dataset.year) || 0; break;
           case 'dates': valA = a.dataset.dates || ''; valB = b.dataset.dates || ''; break;
           case 'location': valA = a.dataset.location; valB = b.dataset.location; break;
           case 'sector': valA = a.dataset.sector; valB = b.dataset.sector; break;
@@ -233,7 +236,7 @@
           case 'exhibitors_count': valA = parseInt(a.dataset.exhibitorsCount) || 0; valB = parseInt(b.dataset.exhibitorsCount) || 0; break;
           case 'stand_cost': valA = parseInt(a.dataset.standCost) || 0; valB = parseInt(b.dataset.standCost) || 0; break;
           case 'status': valA = a.dataset.status; valB = b.dataset.status; break;
-          default: valA = a.dataset.dates || ''; valB = b.dataset.dates || '';
+          default: valA = parseInt(a.dataset.year) || 0; valB = parseInt(b.dataset.year) || 0;
         }
         
         if (sortDirection === 'asc') {
