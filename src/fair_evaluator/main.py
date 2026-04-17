@@ -6,7 +6,7 @@ from uuid import uuid4
 
 import requests
 import urllib3
-from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, UploadFile
+from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from pydantic import BaseModel
@@ -108,6 +108,8 @@ class FairCreate(BaseModel):
     facebook: str | None = None
     tiktok: str | None = None
     contacts: dict | None = None
+    web_sources: list | None = None
+    extraction_regions: list | None = None
 
 
 class FairUpdate(BaseModel):
@@ -122,6 +124,8 @@ class FairUpdate(BaseModel):
     target_segments: list[str] | None = None
     expected_visitors: int | None = None
     exhibitors_count: int | None = None
+    sources: list | None = None
+    web_sources: list | None = None
     fair_email: str | None = None
     stand_cost: int | None = None
     contacts: dict | None = None
@@ -446,7 +450,7 @@ def get_fair(fair_id: str, db: Session = Depends(get_db)):
     fair = db.query(Fair).filter(Fair.id == fair_id).first()
     if not fair:
         raise HTTPException(status_code=404, detail="Fair not found")
-    return {"id": fair.id, "name": fair.name, "year": fair.year, "url": fair.url, "description": fair.description or "", "folder_path": fair.folder_path or "", "site_url": fair.company_website, "dates": fair.dates, "location": fair.location, "target_segments": fair.target_segments, "expected_visitors": fair.expected_visitors, "exhibitors_count": fair.exhibitors_count, "sources": fair.sources, "linkedin_url": fair.company_linkedin, "fair_email": fair.fair_email or "", "gallery": fair.gallery or [], "attachments": fair.attachments or [], "contacts": fair.contacts or {}, "stand_cost": fair.stand_cost or 0, "status": fair.status or "in_valutazione", "archived": fair.archived or "no", "scraped_data": fair.scraped_data, "historical_data": fair.historical_data, "ROI_assessment": fair.ROI_assessment, "cost_estimate": fair.cost_estimate, "recommendation": fair.recommendation, "rationale": fair.rationale, "report_pdf_path": fair.report_pdf_path, "report_html_path": fair.report_html_path, "venue": fair.venue, "address": fair.address, "sector": fair.sector, "frequency": fair.frequency, "edition": fair.edition, "organizer": fair.organizer, "exhibitor_countries": fair.exhibitor_countries, "visitor_profile": fair.visitor_profile, "product_categories": fair.product_categories, "key_features": fair.key_features, "instagram": fair.instagram or "", "facebook": fair.facebook or "", "tiktok": fair.tiktok or ""}
+    return {"id": fair.id, "name": fair.name, "year": fair.year, "url": fair.url, "description": fair.description or "", "folder_path": fair.folder_path or "", "site_url": fair.company_website, "dates": fair.dates, "location": fair.location, "target_segments": fair.target_segments, "expected_visitors": fair.expected_visitors, "exhibitors_count": fair.exhibitors_count, "sources": fair.sources, "web_sources": fair.web_sources or [], "extraction_regions": fair.extraction_regions or [], "linkedin_url": fair.company_linkedin, "fair_email": fair.fair_email or "", "gallery": fair.gallery or [], "attachments": fair.attachments or [], "contacts": fair.contacts or {}, "stand_cost": fair.stand_cost or 0, "status": fair.status or "in_valutazione", "archived": fair.archived or "no", "scraped_data": fair.scraped_data, "historical_data": fair.historical_data, "ROI_assessment": fair.ROI_assessment, "cost_estimate": fair.cost_estimate, "recommendation": fair.recommendation, "rationale": fair.rationale, "report_pdf_path": fair.report_pdf_path, "report_html_path": fair.report_html_path, "venue": fair.venue, "address": fair.address, "sector": fair.sector, "frequency": fair.frequency, "edition": fair.edition, "organizer": fair.organizer, "exhibitor_countries": fair.exhibitor_countries, "visitor_profile": fair.visitor_profile, "product_categories": fair.product_categories, "key_features": fair.key_features, "instagram": fair.instagram or "", "facebook": fair.facebook or "", "tiktok": fair.tiktok or ""}
 
 
 @app.put("/api/fairs/{fair_id}", response_model=dict)
@@ -1321,6 +1325,131 @@ def download_report(fair_id: str, format: str = "html", db: Session = Depends(ge
     raise HTTPException(status_code=404, detail="Report not found")
 
 
+class WebSourceInput(BaseModel):
+    url: str
+    source_type: str
+    label: str | None = None
+
+
+class WebSourceUpdate(BaseModel):
+    sources: list
+
+
+SCREENSHOTS_DIR = Path("./data/screenshots")
+
+
+@app.post("/api/fairs/{fair_id}/web-sources")
+def add_web_source(fair_id: str, web_source: WebSourceInput, db: Session = Depends(get_db)):
+    fair = db.query(Fair).filter(Fair.id == fair_id).first()
+    if not fair:
+        raise HTTPException(status_code=404, detail="Fair not found")
+    
+    sources = fair.web_sources or []
+    source_entry = {
+        "url": web_source.url,
+        "source_type": web_source.source_type,
+        "label": web_source.label or web_source.source_type,
+        "screenshot": None
+    }
+    sources.append(source_entry)
+    fair.web_sources = sources
+    db.commit()
+    
+    return {"sources": sources}
+
+
+@app.put("/api/fairs/{fair_id}/web-sources")
+def update_web_sources(fair_id: str, update: WebSourceUpdate, db: Session = Depends(get_db)):
+    fair = db.query(Fair).filter(Fair.id == fair_id).first()
+    if not fair:
+        raise HTTPException(status_code=404, detail="Fair not found")
+    
+    fair.web_sources = update.sources
+    db.commit()
+    
+    return {"fair_id": fair_id, "sources": fair.web_sources or []}
+
+
+@app.post("/api/fairs/{fair_id}/web-sources/screenshot-fallback")
+def capture_screenshots_fallback(fair_id: str, url_idx: int, db: Session = Depends(get_db)):
+    fair = db.query(Fair).filter(Fair.id == fair_id).first()
+    if not fair:
+        raise HTTPException(status_code=404, detail="Fair not found")
+    
+    sources = fair.web_sources or []
+    if url_idx < 0 or url_idx >= len(sources):
+        raise HTTPException(status_code=400, detail="Invalid URL index")
+    
+    url = sources[url_idx].get("url", "")
+    if not url:
+        raise HTTPException(status_code=400, detail="URL not found")
+    
+    return {"status": "skipped", "message": "Screenshot disabled - install playwright browsers manually"}
+
+
+@app.post("/api/fairs/{fair_id}/web-sources/screenshot")
+def capture_screenshots(fair_id: str, url_idx: int, db: Session = Depends(get_db)):
+    SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
+    fair = db.query(Fair).filter(Fair.id == fair_id).first()
+    if not fair:
+        raise HTTPException(status_code=404, detail="Fair not found")
+    
+    sources = fair.web_sources or []
+    if url_idx < 0 or url_idx >= len(sources):
+        raise HTTPException(status_code=400, detail="Invalid URL index")
+    
+    url = sources[url_idx].get("url", "")
+    if not url:
+        raise HTTPException(status_code=400, detail="URL not found")
+    
+    screenshot_path = SCREENSHOTS_DIR / f"{fair_id}_{url_idx}.png"
+    
+    try:
+        import asyncio
+        from playwright.async_api import async_playwright
+        
+        async def take_screenshot():
+            async with async_playwright() as p:
+                browser = await p.chromium.launch()
+                page = await browser.new_page()
+                await page.goto(url, timeout=15000)
+                await page.screenshot(path=str(screenshot_path), full_page=True)
+                await browser.close()
+        
+        asyncio.run(take_screenshot())
+        sources[url_idx]["screenshot"] = str(screenshot_path)
+        fair.web_sources = sources
+        db.commit()
+    except Exception as e:
+        return {"error": str(e), "screenshot": None, "status": "error"}
+    
+    return {"url_idx": url_idx, "screenshot": str(screenshot_path)}
+
+
+@app.post("/api/fairs/{fair_id}/web-sources/{url_idx}/screenshot-upload")
+async def upload_screenshot(fair_id: str, url_idx: int, file: UploadFile = File(...), db: Session = Depends(get_db)):
+    fair = db.query(Fair).filter(Fair.id == fair_id).first()
+    if not fair:
+        raise HTTPException(status_code=404, detail="Fair not found")
+    
+    sources = fair.web_sources or []
+    if url_idx < 0 or url_idx >= len(sources):
+        raise HTTPException(status_code=400, detail="Invalid URL index")
+    
+    SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
+    screenshot_path = SCREENSHOTS_DIR / f"{fair_id}_{url_idx}_{file.filename}"
+    
+    contents = await file.read()
+    with open(screenshot_path, "wb") as f:
+        f.write(contents)
+    
+    sources[url_idx]["screenshot"] = str(screenshot_path)
+    fair.web_sources = sources
+    db.commit()
+    
+    return {"url_idx": url_idx, "screenshot": str(screenshot_path)}
+
+
 @app.post("/api/import-excel-upload")
 async def import_excel_upload(file: UploadFile = File(...), db: Session = Depends(get_db)):
     import openpyxl
@@ -1535,6 +1664,23 @@ def fair_detail_page(fair_id: str):
     template = env.get_template("page_fair_detail.html")
     fair = get_fair(fair_id, SessionLocal())
     return HTMLResponse(template.render(fair=fair, nav_active="fairs"))
+
+
+@app.get("/fairs/{fair_id}/visual-editor", response_class=HTMLResponse)
+def visual_editor_page(fair_id: str):
+    from jinja2 import Environment, FileSystemLoader
+    env = Environment(loader=FileSystemLoader(str(TEMPLATE_DIR)))
+    template = env.get_template("page_visual_editor.html")
+    return HTMLResponse(template.render(fair_id=fair_id, nav_active="fairs"))
+
+
+@app.get("/visual-editor", response_class=HTMLResponse)
+def visual_editor_standalone(request: Request):
+    from jinja2 import Environment, FileSystemLoader
+    env = Environment(loader=FileSystemLoader(str(TEMPLATE_DIR)))
+    template = env.get_template("page_visual_editor.html")
+    url = request.query_params.get("url", "")
+    return HTMLResponse(template.render(url=url, nav_active=""))
 
 
 @app.get("/settings", response_class=HTMLResponse)

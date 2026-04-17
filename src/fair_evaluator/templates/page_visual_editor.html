@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Editor Visivo - Estrazione Dati</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; background: #f8fafc; }
+    .sidebar { background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%); min-height: 100vh; }
+    .nav-link { color: #94a3b8; padding: 12px 20px; border-radius: 8px; margin: 2px 8px; }
+    .nav-link:hover, .nav-link.active { background: #334155; color: #fff; }
+    #canvas-container { position: relative; overflow: auto; background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    #screenshotImg { display: block; max-width: 100%; }
+    .region { 
+      position: absolute; 
+      border: 2px solid #3b82f6; 
+      background: rgba(59, 130, 246, 0.2); 
+      cursor: move; 
+    }
+    .region:hover { background: rgba(59, 130, 246, 0.3); }
+    .region.selected { border-color: #f59e0b; background: rgba(245, 158, 11, 0.3); }
+    .region-label {
+      position: absolute; top: -24px; left: 0;
+      background: #3b82f6; color: white;
+      padding: 2px 8px; border-radius: 4px;
+      font-size: 11px; white-space: nowrap;
+    }
+    .region-type-btn { transition: all 0.2s; }
+    .region-type-btn.active { background: #3b82f6; color: white; border-color: #3b82f6; }
+  </style>
+</head>
+<body>
+  <div class="container-fluid">
+    <div class="row">
+      <div class="col-md-2 sidebar p-0">
+        <div class="p-3 text-white border-bottom border-secondary">
+          <h5 class="mb-0"><i class="fas fa-draw-polygon me-2"></i>Editor Visivo</h5>
+        </div>
+        <nav class="nav flex-column mt-2">
+          <a class="nav-link" href="/"><i class="fas fa-home me-2"></i>Home</a>
+          <a class="nav-link" href="/fairs"><i class="fas fa-building me-2"></i>Fiere</a>
+          <a class="nav-link" href="/fairs/new"><i class="fas fa-plus me-2"></i>Nuova Fiera</a>
+          <a class="nav-link active" href="#"><i class="fas fa-draw-polygon me-2"></i>Editor</a>
+        </nav>
+      </div>
+      
+      <div class="col-md-10 p-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <div>
+            <h4 class="mb-0">Definisci le Aree di Estrazione</h4>
+            <small class="text-muted">Disegna le sezioni da cui estrarre i dati dalla pagina web</small>
+          </div>
+          <div class="d-flex gap-2">
+            <button class="btn btn-primary" onclick="generatePrompt()"><i class="fas fa-magic me-1"></i>Genera Prompt</button>
+            <button class="btn btn-outline-secondary" onclick="window.close()"><i class="fas fa-times"></i>Chiudi</button>
+          </div>
+        </div>
+        
+        <div class="card mb-3">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="fas fa-link me-2"></i>URL Pagina Web</h5>
+            <button class="btn btn-sm btn-outline-primary" onclick="loadScreenshot()"><i class="fas fa-refresh me-1"></i>Carica Screenshot</button>
+          </div>
+          <div class="card-body">
+            <div class="row">
+              <div class="col-md-8">
+                <input type="url" class="form-control" id="pageUrl" placeholder="https://...">
+              </div>
+              <div class="col-md-4">
+                <input type="text" class="form-control" id="pageTitleInput" placeholder="Titolo pagina (opzionale)">
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="card mb-3">
+          <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-vector-square me-2"></i>Tipo Area</h5>
+          </div>
+          <div class="card-body d-flex flex-wrap gap-2">
+            <button class="btn btn-sm btn-outline-secondary region-type-btn active" onclick="setRegionType('home')">Home</button>
+            <button class="btn btn-sm btn-outline-secondary region-type-btn" onclick="setRegionType('perché_partecipare')">Perché Partecipare</button>
+            <button class="btn btn-sm btn-outline-secondary region-type-btn" onclick="setRegionType('perché_esporre')">Perché Esporre</button>
+            <button class="btn btn-sm btn-outline-secondary region-type-btn" onclick="setRegionType('programma')">Programma</button>
+            <button class="btn btn-sm btn-outline-secondary region-type-btn" onclick="setRegionType('relatori')">Relatori</button>
+            <button class="btn btn-sm btn-outline-secondary region-type-btn" onclick="setRegionType('comitato_scientifico')">Comitato Scientifico</button>
+            <button class="btn btn-sm btn-outline-secondary region-type-btn" onclick="setRegionType('partner')">Partner</button>
+            <button class="btn btn-sm btn-outline-secondary region-type-btn" onclick="setRegionType('partecipanti')">Partecipanti</button>
+            <button class="btn btn-sm btn-outline-secondary region-type-btn" onclick="setRegionType('temi')">Temi</button>
+            <button class="btn btn-sm btn-outline-secondary region-type-btn" onclick="setRegionType('media_kit')">Media Kit</button>
+          </div>
+        </div>
+        
+        <div class="alert alert-info mb-3">
+          <i class="fas fa-info-circle me-1"></i>
+          <strong>Come disegnare:</strong> Click e trascina sulla pagina per creare un'area. Click su un'area per selezionarla, poi premi CANC per eliminarla.
+        </div>
+        
+        <div class="card mb-3">
+          <div class="card-body p-0" id="canvasContainer" style="min-height: 400px; display: flex; align-items: center; justify-content: center; background: #e2e8f0;">
+            <p class="text-muted">Inserisci un URL e clicca "Carica Screenshot" per iniziare</p>
+          </div>
+        </div>
+        
+        <div class="row">
+          <div class="col-md-6">
+            <div class="card">
+              <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0"><i class="fas fa-th-large me-2"></i>Regioni Definite</h6>
+                <button class="btn btn-sm btn-outline-danger" onclick="clearAllRegions()"><i class="fas fa-trash"></i></button>
+              </div>
+              <div class="card-body p-0" id="regionsList" style="max-height: 200px; overflow-y: auto;">
+                <p class="text-muted p-3 mb-0">Nessuna regione definita</p>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="card">
+              <div class="card-header">
+                <h6 class="mb-0"><i class="fas fa-robot me-2"></i>Prompt Generato</h6>
+              </div>
+              <div class="card-body">
+                <pre id="generatedPrompt" class="bg-dark text-light p-3 rounded" style="font-size: 12px; max-height: 200px; overflow: auto;">Il prompt apparirà qui dopo aver disegnato le aree e cliccato "Genera Prompt"...</pre>
+                <button class="btn btn-sm btn-outline-primary mt-2" onclick="copyPrompt()"><i class="fas fa-copy me-1"></i>Copia Prompt</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    let regions = [];
+    let currentRegionType = 'home';
+    let isDrawing = false;
+    let startX, startY;
+    let selectedRegion = null;
+    let currentUrl = '';
+    let currentTitle = '';
+    
+    const urlParams = new URLSearchParams(window.location.search);
+    const url = urlParams.get('url');
+    if (url) {
+      document.getElementById('pageUrl').value = url;
+    }
+    
+    async function loadScreenshot() {
+      const url = document.getElementById('pageUrl').value.trim();
+      const title = document.getElementById('pageTitleInput').value.trim();
+      if (!url) {
+        alert('Inserisci un URL');
+        return;
+      }
+      
+      currentUrl = url;
+      currentTitle = title;
+      
+      const container = document.getElementById('canvasContainer');
+      container.innerHTML = '<div class="text-center"><div class="spinner-border text-primary"></div><p>Caricamento screenshot...</p></div>';
+      
+      try {
+        const resp = await fetch('/api/scrape-url', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({url: url})
+        });
+        
+        const data = await resp.json();
+        
+        container.innerHTML = '';
+        
+        const wrapper = document.createElement('div');
+        wrapper.id = 'canvas-wrapper';
+        wrapper.style.position = 'relative';
+        wrapper.style.display = 'inline-block';
+        
+        const img = document.createElement('img');
+        img.id = 'screenshotImg';
+        img.src = 'data:image/png;base64,' + btoa(data.text_content || '');
+        img.onerror = () => {
+          container.innerHTML = '<p class="text-danger">Errore caricamento screenshot</p>';
+        };
+        
+        wrapper.appendChild(img);
+        container.appendChild(wrapper);
+        
+        document.getElementById('canvas-wrapper').onmousedown = (e) => {
+          if (e.target.id !== 'screenshotImg') return;
+          const rect = e.target.getBoundingClientRect();
+          startX = e.clientX - rect.left;
+          startY = e.clientY - rect.top;
+          isDrawing = true;
+        };
+        
+        document.getElementById('canvas-wrapper').onmousemove = (e) => {
+          if (!isDrawing) return;
+          const rect = e.target.getBoundingClientRect();
+          const x = e.clientX - rect.left;
+          const y = e.clientY - rect.top;
+          
+          const existing = document.getElementById('temp-region');
+          if (existing) existing.remove();
+          
+          const temp = document.createElement('div');
+          temp.id = 'temp-region';
+          temp.className = 'region';
+          temp.style.left = Math.min(startX, x) + 'px';
+          temp.style.top = Math.min(startY, y) + 'px';
+          temp.style.width = Math.abs(x - startX) + 'px';
+          temp.style.height = Math.abs(y - startY) + 'px';
+          document.getElementById('canvas-wrapper').appendChild(temp);
+        };
+        
+        document.getElementById('canvas-wrapper').onmouseup = (e) => {
+          if (!isDrawing) return;
+          isDrawing = false;
+          
+          const temp = document.getElementById('temp-region');
+          if (temp) {
+            temp.remove();
+            const rect = e.target.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            const width = Math.abs(x - startX);
+            const height = Math.abs(y - startY);
+            
+            if (width > 10 && height > 10) {
+              regions.push({
+                region_type: currentRegionType,
+                x: Math.min(startX, x),
+                y: Math.min(startY, y),
+                width: width,
+                height: height
+              });
+            }
+          }
+          
+          renderRegions();
+        };
+        
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'Delete' || e.key === 'Backspace') {
+            if (selectedRegion !== null) {
+              regions.splice(selectedRegion, 1);
+              selectedRegion = null;
+              renderRegions();
+            }
+          }
+        });
+        
+      } catch (e) {
+        container.innerHTML = '<p class="text-danger">Errore: ' + e.message + '</p>';
+      }
+    }
+    
+    function setRegionType(type) {
+      currentRegionType = type;
+      document.querySelectorAll('.region-type-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.textContent.toLowerCase().includes(type.replace('_', ' ')));
+      });
+    }
+    
+    function renderRegions() {
+      const wrapper = document.getElementById('canvas-wrapper');
+      if (!wrapper) return;
+      
+      wrapper.querySelectorAll('.region').forEach(r => r.remove());
+      
+      regions.forEach((r, i) => {
+        const div = document.createElement('div');
+        div.className = 'region' + (selectedRegion === i ? ' selected' : '');
+        div.style.left = r.x + 'px';
+        div.style.top = r.y + 'px';
+        div.style.width = r.width + 'px';
+        div.style.height = r.height + 'px';
+        
+        const label = document.createElement('div');
+        label.className = 'region-label';
+        label.textContent = r.region_type;
+        div.appendChild(label);
+        
+        div.onclick = (e) => {
+          e.stopPropagation();
+          selectedRegion = i;
+          renderRegions();
+        };
+        
+        wrapper.appendChild(div);
+      });
+      
+      renderRegionsList();
+      updatePromptPreview();
+    }
+    
+    function renderRegionsList() {
+      const list = document.getElementById('regionsList');
+      if (!regions.length) {
+        list.innerHTML = '<p class="text-muted p-3 mb-0">Nessuna regione definita</p>';
+        return;
+      }
+      
+      list.innerHTML = regions.map((r, i) => `
+        <div class="d-flex justify-content-between align-items-center p-2 border-bottom">
+          <span>
+            <span class="badge bg-${selectedRegion === i ? 'warning' : 'primary'}">${r.region_type}</span>
+            <small class="text-muted">${r.width}×${r.height} at (${r.x},${r.y})</small>
+          </span>
+          <button class="btn btn-sm btn-outline-danger py-0 px-1" onclick="deleteRegion(${i})"><i class="fas fa-times"></i></button>
+        </div>
+      `).join('');
+    }
+    
+    function deleteRegion(idx) {
+      regions.splice(idx, 1);
+      selectedRegion = null;
+      renderRegions();
+    }
+    
+    function clearAllRegions() {
+      if (confirm('Eliminare tutte le regioni?')) {
+        regions = [];
+        selectedRegion = null;
+        renderRegions();
+      }
+    }
+    
+    function updatePromptPreview() {
+      const promptEl = document.getElementById('generatedPrompt');
+      
+      if (!regions.length) {
+        promptEl.textContent = 'Disegna delle aree sulla pagina e clicca "Genera Prompt"';
+        return;
+      }
+      
+      const prompt = `Analizza la pagina web: ${currentUrl}
+
+Per ogni sezione indicata, estrai le informazioni:
+
+${regions.map((r, i) => {
+  const areaDesc = {
+    'home': 'la homepage e informazioni generali sulla fiera',
+    'perché_partecipare': 'i motivi per cui partecipare come visitatore',
+    'perché_esporre': 'i benefici per gli espositori',
+    'programma': 'il programma/eventi della fiera',
+    'relatori': 'gli speaker/relatori previsti',
+    'comitato_scientifico': 'il comitato scientifico',
+    'partner': 'i partner e sponsor',
+    'partecipanti': 'le aziende partecipanti',
+    'temi': 'i temi议题 della fiera',
+    'media_kit': 'il media kit e materiali stampa'
+  }[r.region_type] || r.region_type;
+  
+  return `${i + 1}. Area "${r.region_type}": ${areaDesc} (posizione: x=${r.x}, y=${r.y}, dimensioni: ${r.width}×${r.height})`;
+}).join('\n')}
+
+Per ciascuna area, forniscici:
+- Titolo/sezione
+- Contenuto testuale rilevante
+- Dati strutturati (date, numeri, categorie, ecc.)`;
+      
+      promptEl.textContent = prompt;
+    }
+    
+    function generatePrompt() {
+      updatePromptPreview();
+    }
+    
+    function copyPrompt() {
+      const text = document.getElementById('generatedPrompt').textContent;
+      navigator.clipboard.writeText(text).then(() => {
+        alert('Prompt copiato!');
+      });
+    }
+  </script>
+</body>
+</html>

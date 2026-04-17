@@ -124,6 +124,8 @@ class Fair(Base):
     expected_visitors = Column(Integer, nullable=True)
     exhibitors_count = Column(Integer, nullable=True)
     sources = Column(JSON, nullable=True)
+    web_sources = Column(JSON, nullable=True)
+    extraction_regions = Column(JSON, nullable=True)
     company_website = Column(String, nullable=True)
     company_linkedin = Column(String, nullable=True)
     fair_email = Column(String, nullable=True)
