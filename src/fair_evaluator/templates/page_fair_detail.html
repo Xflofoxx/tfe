@@ -80,6 +80,7 @@
             </div>
             <div class="d-flex gap-2 flex-wrap">
               <button class="btn btn-primary" onclick="parseAttachments()"><i class="fas fa-file-import me-2"></i>Estrai da Allegati</button>
+              <button class="btn btn-info" onclick="window.open('/api/fairs/' + fairId + '/report?format=html', '_blank')"><i class="fas fa-file-pdf me-2"></i>Report</button>
               <button class="btn btn-success" onclick="evaluateFair()" {% if not fair.attachments %}disabled{% endif %}><i class="fas fa-robot me-2"></i>Valuta</button>
               <button class="btn btn-warning" onclick="saveAllFields()"><i class="fas fa-save me-2"></i>Salva</button>
               <button class="btn btn-secondary" onclick="archiveFair()"><i class="fas fa-archive me-2"></i>Archivia</button>

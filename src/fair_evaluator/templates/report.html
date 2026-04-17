@@ -1,34 +1,159 @@
 <!DOCTYPE html>
-<html>
+<html lang="it">
 <head>
-  <meta charset="utf-8" />
-  <title>Scheda Fiera - Report</title>
+  <meta charset="UTF-8">
+  <title>Report Partecipazione - {{ fair.name }}</title>
   <style>
-    body { font-family: sans-serif; padding: 2rem; }
-    h1 { font-size: 1.6rem; }
-    section { margin-bottom: 1.2rem; }
-    .kpi { font-weight: bold; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; padding: 40px; max-width: 900px; margin: 0 auto; line-height: 1.6; color: #1e293b; }
+    h1 { font-size: 1.8rem; color: #1e293b; margin-bottom: 8px; }
+    h2 { font-size: 1.3rem; color: #334155; margin: 24px 0 12px; padding-bottom: 8px; border-bottom: 2px solid #3b82f6; }
+    h3 { font-size: 1.1rem; color: #475569; margin: 16px 0 8px; }
+    p { margin-bottom: 12px; }
+    ul, ol { margin: 8px 0 16px 24px; }
+    li { margin-bottom: 6px; }
+    .header { margin-bottom: 24px; }
+    .fair-name { font-size: 2rem; font-weight: 700; color: #0f172a; }
+    .meta { color: #64748b; font-size: 0.95rem; }
+    .badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; margin-right: 8px; }
+    .badge-recommended { background: #d1fae5; color: #065f46; }
+    .badge-not-recommended { background: #fee2e2; color: #991b1b; }
+    .badge-neutral { background: #fef3c7; color: #92400e; }
+    .section { margin-bottom: 32px; }
+    .tag { display: inline-block; padding: 2px 10px; border-radius: 4px; font-size: 0.8rem; margin: 2px; background: #e2e8f0; }
+    .footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 0.85rem; color: #94a3b8; }
+    .coherence-positive { color: #059669; }
+    .coherence-negative { color: #dc2626; }
   </style>
-  </head>
-  <body>
-  <h1>Scheda Fiera</h1>
-  {% if fair %}
-  <section>
-    <h2>{{ fair.name or 'Fiera' }}</h2>
-    <p>Date/Location: {{ (fair.dates or [])|join(', ') }} {{ fair.location or '' }}</p>
-    <p>URL: <a href="{{ fair.url or '#' }}">{{ fair.url or '#' }}</a></p>
-  </section>
-  <section>
-    <h3>Analisi</h3>
-    <p><span class="kpi">Raccomandazione:</span> {{ fair.recommendation or 'Non disponibile' }}</p>
-    <p><span class="kpi">Razionale:</span> {{ fair.rationale or 'Non disponibile' }}</p>
-  </section>
-  <section>
-    <h3>Costi stimati</h3>
-    <pre>{{ fair.cost_estimate or '' }}</pre>
-  </section>
-  {% else %}
-  <p>Nessuna scheda disponibile.</p>
-  {% endif %}
-  </body>
+</head>
+<body>
+  <div class="header">
+    <div class="fair-name">{{ fair.name }}</div>
+    <div class="meta">{{ fair.dates[0] if fair.dates else '' }} | {{ fair.location }} | {{ fair.venue }}</div>
+    <div class="meta">Organizzatore: {{ fair.organizer }} | {{ fair.year }}</div>
+  </div>
+
+  <div class="section">
+    <h2>Sezione 1: Executive Summary</h2>
+    <p><strong>Raccomandazione:</strong> 
+      <span class="badge {% if fair.recommendation == 'Consigliata' %}badge-recommended{% elif fair.recommendation == 'Non Consigliata' %}badge-not-recommended{% else %}badge-neutral{% endif %}">
+        {{ fair.recommendation or 'Valutare' }}
+      </span>
+    </p>
+    <p>{{ fair.rationale or 'Analisi in corso...' }}</p>
+  </div>
+
+  <div class="section">
+    <h2>Sezione 2: Coerenza con la Strategia GALEELEO</h2>
+    <h3>Allineamenti</h3>
+    <ul>
+      <li>Settore: {{ fair.sector or 'Da definire' }}</li>
+      <li>Target: {{ (fair.target_segments or [])|join(', ') or 'Da definire' }}</li>
+      <li>Profilo visitatori: {{ fair.visitor_profile or 'Da definire' }}</li>
+      <li>Budget stimato: €{{ fair.stand_cost or 0 }}</li>
+    </ul>
+    <h3>Disallineamenti</h3>
+    <ul>
+      <li>Verificare allineamento con obiettivi strategici aziendali</li>
+    </ul>
+    <p><strong>Valutazione:</strong> La fiera risulta coerente con la strategia aziendale se gli allineamenti superano i disallineamenti.</p>
+  </div>
+
+  <div class="section">
+    <h2>Sezione 3: Obiettivo della Presenza</h2>
+    <h3>Obiettivi Previsti</h3>
+    <ul>
+      <li>Generazione lead qualificati</li>
+      <li>Awareness e visibilità del brand</li>
+      <li>Presentazione nuovi prodotti/servizi</li>
+      <li>Networking con stakeholder del settore</li>
+    </ul>
+    <h3>Obiettivi Non Previsti</h3>
+    <ul>
+      <li>Chiusure dirette in fiera</li>
+      <li>Vendita diretta</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>Sezione 4: Presenza Raccomandata (Minimum Viable Presence)</h2>
+    <ul>
+      <li><strong>Formato:</strong> Stand {{ fair.exhibitors_count//10 if fair.exhibitors_count else 20 }}mq modulare</li>
+      <li><strong>Tipo partecipazione:</strong> Presenza diretta con personale</li>
+      <li><strong>Elementi distintivi:</strong>
+        <ul>
+          <li>Demo prodotti live</li>
+          <li>Materiale informativo cartaceo e digitale</li>
+          <li>Meetings prenotati con clienti esistenti</li>
+        <li>Collect_leads elettronico</li>
+        </ul>
+      </li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>Sezione 5: Team Consigliato</h2>
+    <ul>
+      <li><strong>Commerciale:</strong> 1-2 risorse per gestione lead e appuntamenti</li>
+      <li><strong>Profilo tecnico senior:</strong> Supporto tecnico e dimostrazioni prodotto</li>
+      <li><strong>Marketing:</strong> 1 risorsa per coordinamento materiali e logistica</li>
+      <li><strong>Management:</strong> Se necessario per meeting strategici</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>Sezione 6: Messaggio Chiave di Comunicazione</h2>
+    <h3>Messaggio da trasmettere in fiera</h3>
+    <p><em>"Presentiamo soluzioni innovative per il settore {{ fair.sector|lower|default('di riferimento') }}, con un focus crescente sulla sostenibilità e sull'eccellenza tecnologica. Il nostro valore distintivo è la capacità di integrare competenze tecniche avanzate con una profonda comprensione delle esigenze specifiche di ogni cliente."</em></p>
+    <h3>Rischi da evitare</h3>
+    <ul>
+      <li><strong>Tecnico:</strong> Non entrare troppo nel dettaglio tecnico senza aver prima qualificato l'interesse</li>
+      <li><strong>Commerciale:</strong> Evitare approccio troppo vendita, privilegiare l'ascolto</li>
+      <li><strong>Tempo:</strong> Non concedere troppo tempo ai visitatori poco qualificati</li>
+      <li><strong>Stand:</strong> Non lasciare lo stand incustodito, copertura sempre garantita</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>Sezione 7: Valutazione Finale</h2>
+    <p><strong>Consigliata se:</strong></p>
+    <ul>
+      <li>Il budget per la partecipazione è disponibile e giustificato dal potenziale lead generation</li>
+      <li>Il target della fiera corrisponde al nostro cliente ideale (settore, dimensione, geografia)</li>
+      <li>La competizione è gestibile e non troppo aggressiva</li>
+      <li>Risorseumane e logistiche sono disponili per una partecipazione efficace</li>
+    </ul>
+    <p><strong>Non consigliata se:</strong></p>
+    <ul>
+      <li>Il costo supera significativamente il budget allocato</li>
+      <li>Il target è troppo diversificato rispetto al nostro posizionamento</li>
+      <li>La fiera mostra trend decrescenti nelle edizioni recenti</li>
+      <li>Non sono disponibili risorse adeguate per una partecipazione di qualità</li>
+    </ul>
+    <p style="margin-top: 16px; padding: 12px; background: #f1f5f9; border-left: 4px solid #3b82f6;">
+      <strong>Conclusion:</strong>{% if fair.recommendation == 'Consigliata' %} La partecipazione a {{ fair.name }} è <strong>raccomandata</strong>{% elif fair.recommendation == 'Non Consigliata' %} La partecipazione a {{ fair.name }} è <strong>non raccomandata</strong>{% else %} La partecipazione a {{ fair.name }} richiede ulteriore valutazione{% endif %}. Valutare attentamente allineamento strategico e risorse disponibili prima di procedere.
+    </p>
+  </div>
+
+  <div class="section">
+
+  <div class="section">
+    <h2>Dati Fiera</h2>
+    <p><strong>Visitatori attesi:</strong> {{ fair.expected_visitors or '-' }}</p>
+    <p><strong>Espositori:</strong> {{ fair.exhibitors_count or '-' }}</p>
+    <p><strong>Costo stand stimato:</strong> €{{ fair.stand_cost or 0 }}</p>
+    <p><strong>Tag:</strong> 
+      {% if fair.tags %}{% for t in fair.tags %}<span class="tag" style="background:{{ t.color }}; color: white;">{{ t.name }}</span>{% endfor %}{% else %}Nessuno{% endif %}
+    </p>
+  </div>
+
+  <div class="section">
+    <h2>Nota Finale</h2>
+    <p>Questo report è stato generato automaticamente. Si raccomanda una revisione manuale prima della decisione finale. Per dubbi o approfondimenti, consultare il team Strategy & Marketing.</p>
+  </div>
+
+  <div class="footer">
+    <p>Report generato |Valutatore Fiere GALEELEO</p>
+  </div>
+</body>
 </html>
