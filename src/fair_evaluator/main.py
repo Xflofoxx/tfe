@@ -1500,23 +1500,22 @@ def render_template(template_name: str, **kwargs) -> str:
 
 
 @app.get("/", response_class=HTMLResponse)
-def home_page():
+def home_page(db: Session = Depends(get_db)):
     from jinja2 import Environment, FileSystemLoader
     env = Environment(loader=FileSystemLoader(str(TEMPLATE_DIR)))
     template = env.get_template("page_home.html")
-    stats = get_database_stats(SessionLocal())
-    ollama = check_ollama_status(SessionLocal())
-    settings = get_settings_endpoint(SessionLocal())
+    stats = get_database_stats(db)
+    ollama = check_ollama_status(db)
+    settings = get_settings_endpoint(db)
     return HTMLResponse(template.render(stats=stats, ollama=ollama, settings=settings, nav_active="home"))
 
 
 @app.get("/fairs", response_class=HTMLResponse)
-def fairs_list_page():
+def fairs_list_page(db: Session = Depends(get_db)):
     from jinja2 import Environment, FileSystemLoader
     env = Environment(loader=FileSystemLoader(str(TEMPLATE_DIR)))
     template = env.get_template("page_fairs.html")
-    db = SessionLocal()
-    fairs = db.query(Fair).order_by(Fair.id.desc()).limit(100).all()
+    fairs = db.query(Fair).filter(Fair.archived != "yes").order_by(Fair.id.desc()).limit(100).all()
     locations = sorted(set(f.location for f in fairs if f.location))
     return HTMLResponse(template.render(fairs=fairs, locations=locations, nav_active="fairs"))
 
@@ -1539,22 +1538,22 @@ def fair_detail_page(fair_id: str):
 
 
 @app.get("/settings", response_class=HTMLResponse)
-def settings_page():
+def settings_page(db: Session = Depends(get_db)):
     from jinja2 import Environment, FileSystemLoader
     env = Environment(loader=FileSystemLoader(str(TEMPLATE_DIR)))
     template = env.get_template("page_settings.html")
-    settings = get_settings_endpoint(SessionLocal())
-    ollama = check_ollama_status(SessionLocal())
+    settings = get_settings_endpoint(db)
+    ollama = check_ollama_status(db)
     return HTMLResponse(template.render(settings=settings, ollama=ollama, nav_active="settings"))
 
 
 @app.get("/maintenance", response_class=HTMLResponse)
-def maintenance_page():
+def maintenance_page(db: Session = Depends(get_db)):
     from jinja2 import Environment, FileSystemLoader
     env = Environment(loader=FileSystemLoader(str(TEMPLATE_DIR)))
     template = env.get_template("page_maintenance.html")
-    stats = get_database_stats(SessionLocal())
-    settings = get_settings_endpoint(SessionLocal())
+    stats = get_database_stats(db)
+    settings = get_settings_endpoint(db)
     return HTMLResponse(template.render(stats=stats, strategy_prompt=settings.get('strategy_prompt', ''), nav_active="maintenance"))
 
 
