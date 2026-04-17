@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Calendario Fiere - Valutatore Fiere</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --status-in_valutazione: #fef3c7;
+      --status-in_valutazione-text: #92400e;
+      --status-approvata: #dbeafe;
+      --status-approvata-text: #1e40af;
+      --status-in_gestione: #e0e7ff;
+      --status-in_gestione-text: #4338ca;
+      --status-conclusa: #d1fae5;
+      --status-conclusa-text: #065f46;
+      --status-rifiutata: #fee2e2;
+      --status-rifiutata-text: #991b1b;
+    }
+    body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+    .sidebar { background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%); min-height: 100vh; }
+    .nav-link { color: #94a3b8; padding: 12px 20px; border-radius: 8px; margin: 2px 8px; }
+    .nav-link:hover, .nav-link.active { background: #334155; color: #fff; }
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 2px;
+      background: #e2e8f0;
+      border: 1px solid #e2e8f0;
+    }
+    .calendar-cell {
+      background: #fff;
+      min-height: 80px;
+      padding: 4px;
+      font-size: 11px;
+      position: relative;
+    }
+    .calendar-cell-header {
+      background: #f1f5f9;
+      font-weight: 600;
+      text-align: center;
+      padding: 8px;
+      font-size: 12px;
+    }
+    .fair-event {
+      padding: 2px 4px;
+      margin-bottom: 2px;
+      border-radius: 3px;
+      font-size: 10px;
+      cursor: pointer;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .fair-event:hover {
+      transform: scale(1.02);
+      z-index: 10;
+    }
+    .fair-event.status-in_valutazione { background: var(--status-in_valutazione); color: var(--status-in_valutazione-text); }
+    .fair-event.status-approvata { background: var(--status-approvata); color: var(--status-approvata-text); }
+    .fair-event.status-in_gestione { background: var(--status-in_gestione); color: var(--status-in_gestione-text); }
+    .fair-event.status-conclusa { background: var(--status-conclusa); color: var(--status-conclusa-text); }
+    .fair-event.status-rifiutata { background: var(--status-rifiutata); color: var(--status-rifiutata-text); }
+    .legend-item {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      margin-right: 8px;
+      font-size: 11px;
+    }
+    .year-nav { font-size: 24px; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <div class="container-fluid">
+    <div class="row">
+      <div class="col-md-2 sidebar p-0">
+        <div class="p-3 text-white border-bottom border-secondary">
+          <h5 class="mb-0"><i class="fas fa-calendar me-2"></i>Calendario</h5>
+        </div>
+        <nav class="nav flex-column mt-2">
+          <a class="nav-link" href="/"><i class="fas fa-home me-2"></i>Home</a>
+          <a class="nav-link" href="/fairs"><i class="fas fa-building me-2"></i>Fiere</a>
+          <a class="nav-link active" href="#"><i class="fas fa-calendar me-2"></i>Calendario</a>
+        </nav>
+      </div>
+      <div class="col-md-10 p-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+          <div class="d-flex align-items-center gap-3">
+            <button class="btn btn-outline-secondary" onclick="changeYear(-1)"><i class="fas fa-chevron-left"></i></button>
+            <span class="year-nav" id="yearDisplay">2026</span>
+            <button class="btn btn-outline-secondary" onclick="changeYear(1)"><i class="fas fa-chevron-right"></i></button>
+          </div>
+          <div class="d-flex gap-2">
+            <span class="legend-item" style="background:var(--status-in_valutazione);color:var(--status-in_valutazione-text)">In Valutazione</span>
+            <span class="legend-item" style="background:var(--status-approvata);color:var(--status-approvata-text)">Approvata</span>
+            <span class="legend-item" style="background:var(--status-in_gestione);color:var(--status-in_gestione-text)">In Gestione</span>
+            <span class="legend-item" style="background:var(--status-conclusa);color:var(--status-conclusa-text)">Conclusa</span>
+            <span class="legend-item" style="background:var(--status-rifiutata);color:var(--status-rifiutata-text)">Rifiutata</span>
+          </div>
+        </div>
+        
+        <div id="calendar" class="calendar-grid"></div>
+        
+        <div class="mt-4">
+          <h5> Sovrapposizioni Rilevate</h5>
+          <div id="overlaps" class="alert alert-warning d-none"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    let currentYear = new Date().getFullYear();
+    let fairs = [];
+    
+    const monthNames = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
+    
+    async function loadFairs() {
+      const resp = await fetch('/api/fairs?show_archived=true');
+      fairs = await resp.json();
+      renderCalendar();
+    }
+    
+    function changeYear(delta) {
+      currentYear += delta;
+      renderCalendar();
+    }
+    
+    function parseDates(dates, duration) {
+      if (!dates || !dates.length) return null;
+      const dateStr = dates[0];
+      if (!dateStr) return null;
+      
+      try {
+        let start, end;
+        
+        const ddMMyyyy = dateStr.match(/(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+        if (ddMMyyyy) {
+          start = new Date(parseInt(ddMMyyyy[3]), parseInt(ddMMyyyy[2])-1, parseInt(ddMMyyyy[1]));
+          if (duration && !isNaN(duration)) {
+            end = new Date(start);
+            end.setDate(end.getDate() + duration);
+          } else if (dateStr.includes('-')) {
+            const parts = dateStr.split('-');
+            if (parts.length >= 2) {
+              const endMatch = parts[1].match(/(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+              if (endMatch) {
+                end = new Date(parseInt(endMatch[3]), parseInt(endMatch[2])-1, parseInt(endMatch[1]));
+              }
+            }
+          }
+        }
+        
+        if (!start) {
+          const parts = dateStr.split(/[-/\s]/);
+          for (let i = 0; i < parts.length; i++) {
+            if (parts[i].length === 4 && !isNaN(parts[i])) {
+              start = new Date(parseInt(parts[i]), 0, 1);
+              break;
+            }
+          }
+          if (start && duration) {
+            end = new Date(start);
+            end.setDate(end.getDate() + duration);
+          }
+        }
+        
+        return { start, end: end || start };
+      } catch (e) {
+        return null;
+      }
+    }
+    
+    function renderCalendar() {
+      document.getElementById('yearDisplay').textContent = currentYear;
+      const grid = document.getElementById('calendar');
+      grid.innerHTML = '';
+      
+      let headerRow = '<div class="calendar-cell calendar-cell-header">Mese</div>';
+      for (let m = 0; m < 12; m++) {
+        headerRow += '<div class="calendar-cell calendar-cell-header">' + monthNames[m].substring(0, 3) + '</div>';
+      }
+      grid.innerHTML = headerRow;
+      
+      let overlaps = [];
+      const fairEvents = [];
+      
+      fairs.forEach(fair => {
+        const duration = fair.duration_days || 2;
+        const parsed = parseDates(fair.dates, duration);
+        if (!parsed || !parsed.start) return;
+        
+        let startYear = parsed.start.getFullYear();
+        if (startYear !== currentYear) return;
+        
+        const startMonth = parsed.start.getMonth();
+        const startDay = parsed.start.getDate();
+        
+        let endDate = parsed.end || parsed.start;
+        const endMonth = endDate.getMonth();
+        const endDay = endDate.getDate();
+        
+        const months = [];
+        for (let m = startMonth; m <= endMonth; m++) {
+          let daysInMonth = new Date(currentYear, m + 1, 0).getDate();
+          let start = m === startMonth ? startDay : 1;
+          let end = m === endMonth ? endDay : daysInMonth;
+          months.push({ month: m, start: start, end: end });
+        }
+        
+        fairEvents.push({
+          fair: fair,
+          months: months,
+          startMonth: startMonth,
+          endMonth: endMonth
+        });
+      });
+      
+      for (let d = 1; d <= 31; d++) {
+        let row = '<div class="calendar-cell">' + d + '</div>';
+        
+        for (let m = 0; m < 12; m++) {
+          let cellContent = '';
+          
+          fairEvents.forEach(ev => {
+            ev.months.forEach(period => {
+              if (period.month === m && d >= period.start && d <= period.end) {
+                cellContent += '<div class="fair-event status-' + ev.fair.status + '" onclick="window.location.href=\'/fairs/' + ev.fair.id + '\'" title="' + ev.fair.name + ' (' + ev.fair.dates + ')">' + ev.fair.name.substring(0, 15) + '</div>';
+              }
+            });
+          });
+          
+          row += '<div class="calendar-cell">' + cellContent + '</div>';
+        }
+        
+        grid.innerHTML += row;
+      }
+      
+      for (let m = 0; m < 12; m++) {
+        grid.innerHTML += '<div class="calendar-cell calendar-cell-header">' + monthNames[m] + '</div>';
+        
+        let cellContent = '';
+        fairEvents.forEach(ev => {
+          if (ev.startMonth <= m && m <= ev.endMonth) {
+            cellContent += '<div class="fair-event status-' + ev.fair.status + '" onclick="window.location.href=\'/fairs/' + ev.fair.id + '\'" title="' + ev.fair.name + '">' + ev.fair.name.substring(0, 12) + '</div>';
+          }
+        });
+        grid.innerHTML += '<div class="calendar-cell" style="min-height:60px">' + cellContent + '</div>';
+      }
+    }
+    
+    loadFairs();
+  </script>
+</body>
+</html>

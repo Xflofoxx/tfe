@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from .db import Base, SessionLocal, engine
-from .models import Fair, Settings, Contact, FairAnalysis, OfferComponent, CommercialProposal
+from .models import Fair, Settings, Contact, FairAnalysis, OfferComponent, CommercialProposal, Tag
 from .services.ollama import OllamaClient
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -86,6 +86,7 @@ class FairCreate(BaseModel):
     network_path: str | None = ""
     name: str | None = None
     year: int | None = None
+    duration_days: int | None = None
     location: str | None = None
     dates: list[str] | None = None
     venue: str | None = None
@@ -114,11 +115,9 @@ class FairCreate(BaseModel):
 
 class FairUpdate(BaseModel):
     name: str | None = None
-    year: int | None = None
-    fair_url: str | None = None
-    description: str | None = None
-    folder_path: str | None = None
-    network_path: str | None = None
+year: int | None = None
+    duration_days: int | None = None
+    location: str | None = None
     dates: list[str] | None = None
     location: str | None = None
     target_segments: list[str] | None = None
@@ -436,6 +435,194 @@ def create_fair(fair_data: FairCreate, db: Session = Depends(get_db)):
     return {"id": fair.id, "name": fair.name, "url": fair.url, "status": "created"}
 
 
+class TagsResponse(BaseModel):
+    tags: list
+
+
+@app.get("/api/tags", response_model=list[dict])
+def list_tags(db: Session = Depends(get_db)):
+    tags = db.query(Tag).order_by(tag.category, tag.name).all()
+    return [{"id": t.id, "name": t.name, "color": t.color, "category": t.category} for t in tags]
+
+
+@app.post("/api/tags", response_model=dict)
+def create_tag(tag_data: dict, db: Session = Depends(get_db)):
+    name = tag_data.get("name", "").strip().lower()
+    if not name:
+        raise HTTPException(status_code=400, detail="Tag name required")
+    
+    existing = db.query(Tag).filter(Tag.name == name).first()
+    if existing:
+        return {"id": existing.id, "name": existing.name, "color": existing.color, "category": existing.category}
+    
+    tag = Tag(
+        name=name,
+        color=tag_data.get("color", "#3b82f6"),
+        category=tag_data.get("category"),
+        created_at=datetime.now().isoformat()
+    )
+    db.add(tag)
+    db.commit()
+    db.refresh(tag)
+    return {"id": tag.id, "name": tag.name, "color": tag.color, "category": tag.category}
+
+
+@app.put("/api/tags/{tag_id}", response_model=dict)
+def update_tag(tag_id: int, tag_data: dict, db: Session = Depends(get_db)):
+    tag = db.query(tag).filter(tag.id == tag_id).first()
+    if not tag:
+        raise HTTPException(status_code=404, detail="Tag not found")
+    
+    if tag_data.get("name"):
+        tag.name = tag_data["name"].strip().lower()
+    if tag_data.get("color"):
+        tag.color = tag_data["color"]
+    if tag_data.get("category"):
+        tag.category = tag_data["category"]
+    
+    db.commit()
+    return {"id": tag.id, "name": tag.name, "color": tag.color, "category": tag.category}
+
+
+@app.delete("/api/tags/{tag_id}")
+def delete_tag(tag_id: int, db: Session = Depends(get_db)):
+    tag = db.query(Tag).filter(Tag.id == tag_id).first()
+    if not tag:
+        raise HTTPException(status_code=404, detail="Tag not found")
+    
+    db.delete(tag)
+    db.commit()
+    return {"status": "deleted"}
+
+
+@app.post("/api/tags/bulk")
+def bulk_create_tags(data: dict, db: Session = Depends(get_db)):
+    tag_names = data.get("tags", [])
+    created = []
+    
+    for name in tag_names:
+        name = name.strip().lower()
+        if not name:
+            continue
+        
+        existing = db.query(Tag).filter(Tag.name == name).first()
+        if existing:
+            created.append({"id": existing.id, "name": existing.name, "color": existing.color})
+            continue
+        
+        tag = Tag(name=name, color="#3b82f6", created_at=datetime.now().isoformat())
+        db.add(tag)
+        db.flush()
+        created.append({"id": tag.id, "name": tag.name, "color": tag.color})
+    
+    db.commit()
+    return {"tags": created}
+
+
+class BulkFairCreate(BaseModel):
+    urls: list[str]
+
+
+@app.post("/api/fairs/bulk")
+def create_bulk_fairs(data: BulkFairCreate, db: Session = Depends(get_db)):
+    urls = data.urls
+    if not urls or not len(urls):
+        raise HTTPException(status_code=400, detail="URLs required")
+    
+    prompt_template = """Analizza questa pagina web di una fiera commerciale e estrai i dati.
+
+URL: {url}
+
+Per ogni URL, restituisci un JSON con questa struttura:
+{{
+  "name": "nome fiera",
+  "year": anno,
+  "duration_days": durata,
+  "description": "descrizione",
+  "dates": "date",
+  "location": "città",
+  "venue": "nome venue",
+  "address": "indirizzo",
+  "organizer": "organizzatore",
+  "sector": "settore merceologico",
+  "frequency": "annuale|biennale|triennale",
+  "edition": "edizione",
+  "expected_visitors": numero,
+  "exhibitors_count": numero,
+  "stand_cost": costo,
+  "visitor_profile": "profilo",
+  "target_segments": ["target"],
+  "product_categories": ["categorie"],
+  "key_features": ["features"]
+}}
+
+Restituisci SOLO un JSON array con tutti i dati delle fiere trovate."""
+
+    prompt = prompt_template + "\n\nURLs da analizzare:\n" + "\n".join([f"- {u}" for u in urls])
+    
+    from .services.ollama import call_ollama
+    ollama_available, ollama_response = call_ollama(prompt)
+    
+    created_fairs = []
+    errors = []
+    
+    if ollama_available and ollama_response:
+        import json
+        import re
+        try:
+            fairs_data = json.loads(ollama_response)
+            if not isinstance(fairs_data, list):
+                fairs_data = [fairs_data]
+        except:
+            match = re.search(r'\[.*\]', ollama_response, re.DOTALL)
+            if match:
+                try:
+                    fairs_data = json.loads(match.group())
+                except:
+                    fairs_data = []
+            else:
+                errors.append({"error": "Parse failed", "raw": ollama_response[:500]})
+                fairs_data = []
+    else:
+        errors.append({"error": "Ollama not available"})
+        fairs_data = []
+    
+    for fd in fairs_data:
+        try:
+            fair_id = str(uuid4())
+            fair = Fair(
+                id=fair_id,
+                name=fd.get("name") or "Unknown",
+                year=fd.get("year") or datetime.now().year,
+                duration_days=fd.get("duration_days"),
+                url=fd.get("url", ""),
+                description=fd.get("description"),
+                dates=[fd.get("dates")] if fd.get("dates") else None,
+                location=fd.get("location"),
+                venue=fd.get("venue"),
+                address=fd.get("address"),
+                organizer=fd.get("organizer"),
+                sector=fd.get("sector"),
+                frequency=fd.get("frequency"),
+                edition=fd.get("edition"),
+                expected_visitors=fd.get("expected_visitors"),
+                exhibitors_count=fd.get("exhibitors_count"),
+                stand_cost=fd.get("stand_cost"),
+                visitor_profile=fd.get("visitor_profile"),
+                target_segments=fd.get("target_segments"),
+                product_categories=fd.get("product_categories"),
+                key_features=fd.get("key_features"),
+                status="in_valutazione"
+            )
+            db.add(fair)
+            created_fairs.append({"id": fair_id, "name": fair.name})
+        except Exception as e:
+            errors.append({"error": str(e), "data": fd})
+    
+    db.commit()
+    return {"created": created_fairs, "errors": errors}
+
+
 @app.get("/api/fairs", response_model=list[dict])
 def list_fairs(skip: int = 0, limit: int = 100, show_archived: bool = False, db: Session = Depends(get_db)):
     query = db.query(Fair)
@@ -450,7 +637,7 @@ def get_fair(fair_id: str, db: Session = Depends(get_db)):
     fair = db.query(Fair).filter(Fair.id == fair_id).first()
     if not fair:
         raise HTTPException(status_code=404, detail="Fair not found")
-    return {"id": fair.id, "name": fair.name, "year": fair.year, "url": fair.url, "description": fair.description or "", "folder_path": fair.folder_path or "", "site_url": fair.company_website, "dates": fair.dates, "location": fair.location, "target_segments": fair.target_segments, "expected_visitors": fair.expected_visitors, "exhibitors_count": fair.exhibitors_count, "sources": fair.sources, "web_sources": fair.web_sources or [], "extraction_regions": fair.extraction_regions or [], "linkedin_url": fair.company_linkedin, "fair_email": fair.fair_email or "", "gallery": fair.gallery or [], "attachments": fair.attachments or [], "contacts": fair.contacts or {}, "stand_cost": fair.stand_cost or 0, "status": fair.status or "in_valutazione", "archived": fair.archived or "no", "scraped_data": fair.scraped_data, "historical_data": fair.historical_data, "ROI_assessment": fair.ROI_assessment, "cost_estimate": fair.cost_estimate, "recommendation": fair.recommendation, "rationale": fair.rationale, "report_pdf_path": fair.report_pdf_path, "report_html_path": fair.report_html_path, "venue": fair.venue, "address": fair.address, "sector": fair.sector, "frequency": fair.frequency, "edition": fair.edition, "organizer": fair.organizer, "exhibitor_countries": fair.exhibitor_countries, "visitor_profile": fair.visitor_profile, "product_categories": fair.product_categories, "key_features": fair.key_features, "instagram": fair.instagram or "", "facebook": fair.facebook or "", "tiktok": fair.tiktok or ""}
+    return {"id": fair.id, "name": fair.name, "year": fair.year, "duration_days": getattr(fair, 'duration_days', None), "url": fair.url, "description": fair.description or "", "folder_path": fair.folder_path or "", "site_url": fair.company_website, "dates": fair.dates, "location": fair.location, "target_segments": fair.target_segments, "expected_visitors": fair.expected_visitors, "exhibitors_count": fair.exhibitors_count, "tags": [{"id": t.id, "name": t.name, "color": t.color} for t in fair.tags] if fair.tags else [], "sources": fair.sources, "web_sources": fair.web_sources or [], "extraction_regions": fair.extraction_regions or [], "linkedin_url": fair.company_linkedin, "fair_email": fair.fair_email or "", "gallery": fair.gallery or [], "attachments": fair.attachments or [], "contacts": fair.contacts or {}, "stand_cost": fair.stand_cost or 0, "status": fair.status or "in_valutazione", "archived": fair.archived or "no", "scraped_data": fair.scraped_data, "historical_data": fair.historical_data, "ROI_assessment": fair.ROI_assessment, "cost_estimate": fair.cost_estimate, "recommendation": fair.recommendation, "rationale": fair.rationale, "report_pdf_path": fair.report_pdf_path, "report_html_path": fair.report_html_path, "venue": fair.venue, "address": fair.address, "sector": fair.sector, "frequency": fair.frequency, "edition": fair.edition, "organizer": fair.organizer, "exhibitor_countries": fair.exhibitor_countries, "visitor_profile": fair.visitor_profile, "product_categories": fair.product_categories, "key_features": fair.key_features, "instagram": fair.instagram or "", "facebook": fair.facebook or "", "tiktok": fair.tiktok or ""}
 
 
 @app.put("/api/fairs/{fair_id}", response_model=dict)
@@ -1681,6 +1868,14 @@ def visual_editor_standalone(request: Request):
     template = env.get_template("page_visual_editor.html")
     url = request.query_params.get("url", "")
     return HTMLResponse(template.render(url=url, nav_active=""))
+
+
+@app.get("/calendar", response_class=HTMLResponse)
+def calendar_page():
+    from jinja2 import Environment, FileSystemLoader
+    env = Environment(loader=FileSystemLoader(str(TEMPLATE_DIR)))
+    template = env.get_template("page_calendar.html")
+    return HTMLResponse(template.render(nav_active="calendar"))
 
 
 @app.get("/settings", response_class=HTMLResponse)

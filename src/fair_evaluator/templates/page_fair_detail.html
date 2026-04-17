@@ -78,7 +78,7 @@
               </div>
             </div>
             <div class="d-flex gap-2 flex-wrap">
-              <button class="btn btn-primary" onclick="analyzeFair()"><i class="fas fa-spider me-2"></i>Raccogli Dati</button>
+              <button class="btn btn-primary" onclick="parseAttachments()"><i class="fas fa-file-import me-2"></i>Estrai da Allegati</button>
               <button class="btn btn-success" onclick="evaluateFair()" {% if not fair.attachments %}disabled{% endif %}><i class="fas fa-robot me-2"></i>Valuta</button>
               <button class="btn btn-warning" onclick="saveAllFields()"><i class="fas fa-save me-2"></i>Salva</button>
               <button class="btn btn-secondary" onclick="archiveFair()"><i class="fas fa-archive me-2"></i>Archivia</button>
@@ -126,12 +126,8 @@
               <div class="section-body">
                 <div class="row">
                   <div class="col-md-6 mb-3">
-                    <label class="form-label">URL Fiera</label>
-                    <input type="url" class="form-control" id="fairUrl" value="{{ fair.url }}" onchange="saveField('url')">
-                  </div>
-                  <div class="col-md-6 mb-3">
                     <label class="form-label">Sito Web</label>
-                    <input type="url" class="form-control" id="fairSiteUrl" value="{{ fair.company_website or '' }}" onchange="saveField('company_website')">
+                    <input type="url" class="form-control" id="fairSiteUrl" value="{{ fair.url or fair.company_website or '' }}" onchange="saveField('url')">
                   </div>
                 </div>
                 <div class="row">
@@ -418,26 +414,47 @@
       }).catch(e => showMessage('Errore: ' + e.message, 'danger'));
     }
     
-    async function analyzeFair() {
-      const urlField = document.getElementById('fairUrl');
-      const url = urlField.value;
-      if (!url) { showMessage('Inserisci prima l\'URL della fiera', 'warning'); return; }
-      showMessage('Raccolta dati in corso...', 'info');
+    async function parseAttachments() {
+      showMessage('Estrazione dati dagli allegati...', 'info');
       try {
-        const resp = await fetch('/api/scrape-url', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({url: url, fair_id: fairId}) });
+        const resp = await fetch('/api/fairs/' + fairId + '/analyze', { method: 'POST' });
         const data = await resp.json();
+        
         if (data.ai_data) {
           const ai = data.ai_data;
-          if (ai.name) { document.getElementById('fairName').value = ai.name; saveField('name'); }
-          if (ai.location) { document.getElementById('fairLocation').value = ai.location; saveField('location'); }
-          if (ai.next_date) { document.getElementById('fairDates').value = ai.next_date; saveField('dates'); }
-          if (ai.sector) { document.getElementById('fairSector').value = ai.sector; saveField('sector'); }
-          if (ai.organizer) { document.getElementById('fairOrganizer').value = ai.organizer; saveField('organizer'); }
-          if (ai.venue) { document.getElementById('fairVenue').value = ai.venue; saveField('venue'); }
-          if (ai.expected_visitors) { document.getElementById('fairExpectedVisitors').value = ai.expected_visitors; saveField('expected_visitors'); }
-          if (ai.exhibitors_count) { document.getElementById('fairExhibitorsCount').value = ai.exhibitors_count; saveField('exhibitors_count'); }
+          let updated = 0;
+          if (ai.name) { document.getElementById('fairName').value = ai.name; saveField('name'); updated++; }
+          if (ai.description) { document.getElementById('fairDescription').value = ai.description; saveField('description'); updated++; }
+          if (ai.next_date) { document.getElementById('fairDates').value = ai.next_date; saveField('dates'); updated++; }
+          if (ai.location) { document.getElementById('fairLocation').value = ai.location; saveField('location'); updated++; }
+          if (ai.sector) { document.getElementById('fairSector').value = ai.sector; saveField('sector'); updated++; }
+          if (ai.organizer) { document.getElementById('fairOrganizer').value = ai.organizer; saveField('organizer'); updated++; }
+          if (ai.venue) { document.getElementById('fairVenue').value = ai.venue; saveField('venue'); updated++; }
+          if (ai.expected_visitors) { document.getElementById('fairExpectedVisitors').value = ai.expected_visitors; saveField('expected_visitors'); updated++; }
+          if (ai.exhibitors_count) { document.getElementById('fairExhibitorsCount').value = ai.exhibitors_count; saveField('exhibitors_count'); updated++; }
+          if (ai.frequency) { document.getElementById('fairFrequency').value = ai.frequency; saveField('frequency'); updated++; }
+          if (ai.stand_cost) { document.getElementById('fairStandCost').value = ai.stand_cost; saveField('stand_cost'); updated++; }
+          
+          if (ai.key_features && ai.key_features.length) {
+            document.getElementById('fairKeyFeatures').value = ai.key_features.join(', ');
+            saveField('key_features');
+            updated++;
+          }
+          if (ai.target_segments && ai.target_segments.length) {
+            document.getElementById('fairTargetSegments').value = ai.target_segments.join(', ');
+            saveField('target_segments');
+            updated++;
+          }
+          if (ai.product_categories && ai.product_categories.length) {
+            document.getElementById('fairProductCategories').value = ai.product_categories.join(', ');
+            saveField('product_categories');
+            updated++;
+          }
+          
+          showMessage('Dati estratti: ' + updated + ' campi aggiornati', 'success');
+        } else {
+          showMessage('Nessun dato estratto. Carica prima gli allegati.', 'warning');
         }
-        showMessage('Dati raccolti!', 'success');
       } catch (err) { showMessage('Errore: ' + err.message, 'danger'); }
     }
     

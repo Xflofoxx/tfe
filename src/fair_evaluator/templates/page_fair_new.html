@@ -15,8 +15,6 @@
     .card { border: none; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
     .btn-primary { background: #3b82f6; border-color: #3b82f6; }
     .btn-primary:hover { background: #2563eb; border-color: #2563eb; }
-    .scraping { opacity: 0.6; pointer-events: none; }
-    .spinner-border-sm { width: 14px; height: 14px; border-width: 2px; }
   </style>
 </head>
 <body>
@@ -31,7 +29,6 @@
           <a class="nav-link" href="/fairs"><i class="fas fa-building me-2"></i>Fiere</a>
           <a class="nav-link active" href="/fairs/new"><i class="fas fa-plus me-2"></i>Nuova Fiera</a>
           <a class="nav-link" href="/settings"><i class="fas fa-cog me-2"></i>Impostazioni</a>
-          <a class="nav-link" href="/maintenance"><i class="fas fa-database me-2"></i>Manutenzione</a>
         </nav>
       </div>
       <div class="col-md-10 p-4">
@@ -42,23 +39,10 @@
             <input type="text" class="form-control form-control-lg fw-bold border-0 bg-transparent p-0" id="fairName" placeholder="Nome Fiera" style="max-width: 400px;">
           </div>
           <div>
-            <button class="btn btn-outline-primary me-2" onclick="scrapeUrl()" id="scrapeBtn">
-              <i class="fas fa-spider me-2"></i>Raccogli Dati
-            </button>
             <button class="btn btn-primary" type="submit" form="fairForm">
               <i class="fas fa-save me-2"></i>Salva
             </button>
           </div>
-        </div>
-
-        <div id="scrapedData" class="alert alert-info d-none">
-          <div class="spinner-border spinner-border-sm me-2" role="status"></div>
-          <span>Raccolta dati in corso...</span>
-        </div>
-
-        <div id="scrapedResults" class="alert alert-success d-none mb-3">
-          <h6 class="alert-heading"><i class="fas fa-check-circle me-2"></i>Dati Raccolti</h6>
-          <div id="scrapedDetails"></div>
         </div>
 
         <div class="row">
@@ -70,7 +54,7 @@
               <div class="card-body">
                 <div class="mb-2">
                   <label class="form-label small text-muted">URL Fiera *</label>
-                  <input type="url" class="form-control form-control-sm" id="fairUrl" required placeholder="https://www.example-fair.com">
+                  <input type="url" class="form-control" id="fairUrl" required placeholder="https://www.example-fair.com">
                 </div>
                 <div class="mb-2">
                   <label class="form-label small text-muted">Descrizione</label>
@@ -79,7 +63,7 @@
                 <div class="row">
                   <div class="col-6 mb-2">
                     <label class="form-label small text-muted">Location</label>
-                    <input type="text" class="form-control form-control-sm" id="fairLocation" placeholder="Città, indirizzo">
+                    <input type="text" class="form-control form-control-sm" id="fairLocation" placeholder="Città">
                   </div>
                   <div class="col-6 mb-2">
                     <label class="form-label small text-muted">Date</label>
@@ -93,7 +77,7 @@
                   </div>
                   <div class="col-6 mb-2">
                     <label class="form-label small text-muted">Indirizzo</label>
-                    <input type="text" class="form-control form-control-sm" id="fairAddress" placeholder="Indirizzo completo">
+                    <input type="text" class="form-control form-control-sm" id="fairAddress" placeholder="Indirizzo">
                   </div>
                 </div>
                 <div class="row">
@@ -107,7 +91,15 @@
                   </div>
                 </div>
                 <div class="row">
-                  <div class="col-6 mb-2">
+                  <div class="col-4 mb-2">
+                    <label class="form-label small text-muted">Anno</label>
+                    <input type="number" class="form-control form-control-sm" id="fairYear" placeholder="2026">
+                  </div>
+                  <div class="col-4 mb-2">
+                    <label class="form-label small text-muted">Durata (gg)</label>
+                    <input type="number" class="form-control form-control-sm" id="fairDuration" placeholder="3">
+                  </div>
+                  <div class="col-4 mb-2">
                     <label class="form-label small text-muted">Frequenza</label>
                     <select class="form-select form-select-sm" id="fairFrequency">
                       <option value="">Seleziona...</option>
@@ -116,6 +108,8 @@
                       <option value="triennale">Triennale</option>
                     </select>
                   </div>
+                </div>
+                <div class="row">
                   <div class="col-6 mb-2">
                     <label class="form-label small text-muted">Edizione</label>
                     <input type="text" class="form-control form-control-sm" id="fairEdition" placeholder="es: 42^ edizione">
@@ -142,7 +136,7 @@
                   </div>
                 </div>
                 <div class="mb-2">
-                  <label class="form-label small text-muted">Paesi Espositori (separati da virgola)</label>
+                  <label class="form-label small text-muted">Paesi Espositori</label>
                   <input type="text" class="form-control form-control-sm" id="fairExhibitorCountries" placeholder="Italia, Germania, Francia...">
                 </div>
                 <div class="mb-0">
@@ -156,15 +150,15 @@
               <div class="card-header"><h5 class="mb-0"><i class="fas fa-tags me-2"></i>Segmenti e Categorie</h5></div>
               <div class="card-body">
                 <div class="mb-2">
-                  <label class="form-label small text-muted">Target (separati da virgola)</label>
+                  <label class="form-label small text-muted">Target</label>
                   <input type="text" class="form-control form-control-sm" id="fairTargetSegments" placeholder="B2B, B2C, Trade...">
                 </div>
                 <div class="mb-2">
-                  <label class="form-label small text-muted">Categorie Prodotto (separate da virgola)</label>
+                  <label class="form-label small text-muted">Categorie Prodotto</label>
                   <input type="text" class="form-control form-control-sm" id="fairProductCategories" placeholder="Macchinari, Alimentare...">
                 </div>
                 <div class="mb-0">
-                  <label class="form-label small text-muted">Caratteristiche Chiave (separate da virgola)</label>
+                  <label class="form-label small text-muted">Caratteristiche Chiave</label>
                   <input type="text" class="form-control form-control-sm" id="fairKeyFeatures" placeholder="Internazionale, B2B...">
                 </div>
               </div>
@@ -173,11 +167,34 @@
 
           <div class="col-md-6">
             <div class="card mb-3">
+              <div class="card-header"><h5 class="mb-0"><i class="fas fa-robot me-2"></i>AI Estrazione Dati</h5></div>
+              <div class="card-body">
+                <div class="mb-2">
+                  <label class="form-label small text-muted">1. Inserisci URL e genera prompt</label>
+                  <div class="input-group">
+                    <input type="url" class="form-control form-control-sm" id="aiUrl" placeholder="https://...">
+                    <button class="btn btn-sm btn-outline-primary" onclick="generatePrompt()"><i class="fas fa-magic me-1"></i>Genera</button>
+                  </div>
+                </div>
+                <div class="mb-2">
+                  <label class="form-label small text-muted">2. Copia il prompt e incollalo in Copilot/ChatGPT</label>
+                  <textarea class="form-control form-control-sm" id="aiPrompt" rows="6" placeholder="Il prompt apparirà qui..."></textarea>
+                  <button class="btn btn-sm btn-outline-secondary mt-1" onclick="copyPrompt()"><i class="fas fa-copy me-1"></i>Copia</button>
+                </div>
+                <div class="mb-0">
+                  <label class="form-label small text-muted">3. Incolla il JSON ottenuto dalla AI</label>
+                  <textarea class="form-control form-control-sm" id="aiResult" rows="8" placeholder='Incolla il JSON risultato...'></textarea>
+                  <button class="btn btn-sm btn-success mt-1 w-100" onclick="applyAIData()"><i class="fas fa-check me-1"></i>Estrai Dati</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="card mb-3">
               <div class="card-header"><h5 class="mb-0"><i class="fas fa-link me-2"></i>Contatti</h5></div>
               <div class="card-body">
                 <div class="mb-2">
                   <label class="form-label small text-muted">Sito Web</label>
-                  <input type="url" class="form-control form-control-sm" id="siteUrl" placeholder="https://www.mycompany.com">
+                  <input type="url" class="form-control form-control-sm" id="siteUrl" placeholder="https://...">
                 </div>
                 <div class="mb-2">
                   <label class="form-label small text-muted">LinkedIn</label>
@@ -224,167 +241,145 @@
                 </select>
               </div>
             </div>
-
-            <div class="card mb-3">
-              <div class="card-header"><h5 class="mb-0"><i class="fas fa-user-friends me-2"></i>Contatti Commerciali</h5></div>
-              <div class="card-body">
-                <div class="row mb-2">
-                  <div class="col-4">
-                    <label class="small text-muted">Cold</label>
-                    <input type="number" class="form-control" id="contactCold" value="0">
-                  </div>
-                  <div class="col-4">
-                    <label class="small text-muted">Warm</label>
-                    <input type="number" class="form-control" id="contactWarm" value="0">
-                  </div>
-                  <div class="col-4">
-                    <label class="small text-muted">Hot</label>
-                    <input type="number" class="form-control" id="contactHot" value="0">
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="card mb-3">
-              <div class="card-header"><h5 class="mb-0"><i class="fas fa-globe me-2"></i>Sorgenti Web</h5></div>
-              <div class="card-body">
-                <div class="mb-2" id="webSourcesList">
-                  <p class="text-muted small">Nessuna sorgente web aggiunta</p>
-                </div>
-                <div class="row g-2 mb-2">
-                  <div class="col-6">
-                    <select class="form-control form-control-sm" id="newSourceType">
-                      <option value="home">Homepage</option>
-                      <option value="perché_partecipare">Perché Partecipare</option>
-                      <option value="perché_esporre">Perché Esporre</option>
-                      <option value="programma">Programma</option>
-                      <option value="relatori">Relatori</option>
-                      <option value="comitato_scientifico">Comitato Scientifico</option>
-                      <option value="partner">Partner</option>
-                      <option value="partecipanti">Partecipanti</option>
-                      <option value="temi">Temi</option>
-                      <option value="media_kit">Media Kit</option>
-                    </select>
-                  </div>
-                  <div class="col-4">
-                    <input type="url" class="form-control form-control-sm" id="newSourceUrl" placeholder="https://...">
-                  </div>
-                  <div class="col-2">
-                    <button class="btn btn-sm btn-success w-100" onclick="addWebSource()"><i class="fas fa-plus"></i></button>
-                  </div>
-                </div>
-                <div class="d-grid">
-                  <button class="btn btn-sm btn-outline-primary" id="visualEditorBtn" onclick="openVisualEditor()"><i class="fas fa-draw-polygon me-1"></i>Editor Visivo (Definisci aree)</button>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
 
         <form id="fairForm">
         </form>
-
-        <div class="accordion mt-3" id="debugAccordion">
-          <div class="accordion-item">
-            <h2 class="accordion-header">
-              <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseDebug">
-                <i class="fas fa-terminal me-2"></i>Debug: Dati Scambio con Ollama
-              </button>
-            </h2>
-            <div id="collapseDebug" class="accordion-collapse collapse" data-bs-parent="#debugAccordion">
-              <div class="accordion-body">
-                <pre id="debugOutput" class="bg-dark text-light p-3 rounded" style="font-size: 12px; max-height: 400px; overflow: auto;"></pre>
-              </div>
-            </div>
-          </div>
-</div>
       </div>
     </div>
   </div>
+  
   <script>
-    function formatJson(data) {
-      return JSON.stringify(data, null, 2);
-    }
-
-    async function scrapeUrl() {
-      const url = document.getElementById('fairUrl').value.trim();
+    function generatePrompt() {
+      const url = document.getElementById('aiUrl').value.trim() || document.getElementById('fairUrl').value.trim();
       if (!url) {
-        document.getElementById('message').innerHTML = '<div class="alert alert-warning">Inserisci prima l\'URL della fiera</div>';
+        showMessage('Inserisci prima l\'URL', 'warning');
         return;
       }
+      
+      const prompt = `Sei un esperto di fiere commerciali. Analizza questa pagina web e estrai i dati della fiera.
 
-      const btn = document.getElementById('scrapeBtn');
-      const scrapedDiv = document.getElementById('scrapedData');
-      const resultsDiv = document.getElementById('scrapedResults');
-      const detailsDiv = document.getElementById('scrapedDetails');
-      const debugOutput = document.getElementById('debugOutput');
+URL: ${url}
 
-      btn.disabled = true;
-      btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Analizzo...';
-      scrapedDiv.classList.remove('d-none');
-      resultsDiv.classList.add('d-none');
-      debugOutput.textContent = '';
+Per favore estrai e restituisci SOLO un JSON con questa struttura:
+{
+  "name": "nome ufficiale fiera",
+  "year":anno della prossima edizione (numero es. 2026)",
+  "duration_days":numero giorni durata fiera (es. 3)",
+  "description": "descrizione di almeno 100 parole",
+  "dates": "date fiera (formato gg-mm-gg-mm-aaaa o descrizione)",
+  "location": "città",
+  "venue": "nome venue",
+  "address": "indirizzo completo",
+  "organizers": ["lista organizzatori/enti organizzatori"],
+  "organizer": "organizzatore principale",
+  "sector": "settore merceologico",
+  "frequency": "annuale|biennale|triennale",
+  "edition": "numero edizione corrente (es. 42^)",
+  "expected_visitors": numero,
+  "exhibitors_count": numero,
+  "stand_cost": costo medio stand,
+  "exhibitor_countries": ["paesi"],
+  "visitor_profile": "profilo visitatori",
+  "target_segments": ["B2B","B2C","Trade"],
+  "product_categories": ["categorie"],
+  "key_features": ["features"]
+}
 
-      try {
-        const resp = await fetch('/api/scrape-url', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({url: url})
-        });
+Rispondi SOLO con JSON valido, niente altro testo. Se un dato non è disponibile, usa null per quel campo.`;
 
-        const data = await resp.json();
-        debugOutput.textContent = formatJson(data);
+      document.getElementById('aiPrompt').value = prompt;
+      showMessage('Prompt generato! Copialo in Copilot/ChatGPT', 'info');
+    }
 
-        if (data.error) {
-          document.getElementById('message').innerHTML = '<div class="alert alert-danger">Errore durante lo scraping: ' + data.error + '</div>';
-          scrapedDiv.classList.add('d-none');
-          btn.disabled = false;
-          btn.innerHTML = '<i class="fas fa-spider me-2"></i>Raccogli Dati';
-          return;
-        }
+    function copyPrompt() {
+      const prompt = document.getElementById('aiPrompt').value;
+      navigator.clipboard.writeText(prompt).then(() => {
+        showMessage('Prompt copiato!', 'success');
+      });
+    }
 
-        if (data.ai_data) {
-          const ai = data.ai_data;
-          if (ai.name) document.getElementById('fairName').value = ai.name;
-          if (ai.location) document.getElementById('fairLocation').value = ai.location;
-          if (ai.dates) document.getElementById('fairDates').value = ai.dates;
-          if (ai.sector) document.getElementById('fairSector').value = ai.sector;
-          if (ai.organizer) document.getElementById('fairOrganizer').value = ai.organizer;
-          if (ai.venue) document.getElementById('fairVenue').value = ai.venue;
-          if (ai.expected_visitors) document.getElementById('fairExpectedVisitors').value = ai.expected_visitors;
-          if (ai.exhibitors_count) document.getElementById('fairExhibitorsCount').value = ai.exhibitors_count;
-        }
-
-        if (data.title && !document.getElementById('fairName').value) {
-          document.getElementById('fairName').value = data.title;
-        }
-
-        if (data.description && !document.getElementById('fairDescription').value) {
-          document.getElementById('fairDescription').value = data.description;
-        }
-
-        let html = '<div class="row">';
-        if (data.title) html += '<div class="col-6"><strong>Title:</strong> ' + data.title + '</div>';
-        if (data.ai_data && data.ai_data.name) html += '<div class="col-6"><strong>Nome:</strong> ' + data.ai_data.name + '</div>';
-        if (data.ai_data && data.ai_data.location) html += '<div class="col-6"><strong>Location:</strong> ' + data.ai_data.location + '</div>';
-        if (data.ai_data && data.ai_data.dates) html += '<div class="col-6"><strong>Date:</strong> ' + data.ai_data.dates + '</div>';
-        if (data.ai_data && data.ai_data.sector) html += '<div class="col-6"><strong>Settore:</strong> ' + data.ai_data.sector + '</div>';
-        if (data.ai_data && data.ai_data.organizer) html += '<div class="col-6"><strong>Organizzatore:</strong> ' + data.ai_data.organizer + '</div>';
-        if (data.ai_data && data.ai_data.venue) html += '<div class="col-6"><strong>Venue:</strong> ' + data.ai_data.venue + '</div>';
-        html += '</div>';
-
-        detailsDiv.innerHTML = html;
-        resultsDiv.classList.remove('d-none');
-
-        document.getElementById('message').innerHTML = '<div class="alert alert-success">Dati raccolti! Verifica e modifica prima di salvare.</div>';
-
-      } catch (err) {
-        document.getElementById('message').innerHTML = '<div class="alert alert-danger">Errore: ' + err.message + '</div>';
-      } finally {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-spider me-2"></i>Raccogli Dati';
-        scrapedDiv.classList.add('d-none');
+    function applyAIData() {
+      const resultText = document.getElementById('aiResult').value.trim();
+      if (!resultText) {
+        showMessage('Incolla prima il JSON dalla AI', 'warning');
+        return;
       }
+      
+      try {
+        let data;
+        const match = resultText.match(/\{[\s\S]*\}/);
+        if (match) {
+          data = JSON.parse(match[0]);
+        } else {
+          throw new Error('Nessun JSON trovato');
+        }
+        
+        let updated = 0;
+        const fields = [
+          ['name', 'fairName'],
+          ['description', 'fairDescription'],
+          ['year', 'fairYear'],
+          ['duration_days', 'fairDuration'],
+          ['dates', 'fairDates'],
+          ['location', 'fairLocation'],
+          ['venue', 'fairVenue'],
+          ['address', 'fairAddress'],
+          ['organizer', 'fairOrganizer'],
+          ['sector', 'fairSector'],
+          ['frequency', 'fairFrequency'],
+          ['edition', 'fairEdition'],
+          ['expected_visitors', 'fairExpectedVisitors'],
+          ['exhibitors_count', 'fairExhibitorsCount'],
+          ['stand_cost', 'fairStandCost'],
+          ['visitor_profile', 'fairVisitorProfile']
+        ];
+        
+        fields.forEach(([key, id]) => {
+          if (data[key] !== undefined && data[key]) {
+            document.getElementById(id).value = data[key];
+            updated++;
+          }
+        });
+        
+        if (!data.organizer && data.organizers && Array.isArray(data.organizers) && data.organizers.length) {
+          document.getElementById('fairOrganizer').value = data.organizers.join(', ');
+          updated++;
+        }
+        
+        if (data.exhibitor_countries) {
+          document.getElementById('fairExhibitorCountries').value = 
+            Array.isArray(data.exhibitor_countries) ? data.exhibitor_countries.join(', ') : data.exhibitor_countries;
+          updated++;
+        }
+        
+        if (data.target_segments) {
+          document.getElementById('fairTargetSegments').value = 
+            Array.isArray(data.target_segments) ? data.target_segments.join(', ') : data.target_segments;
+          updated++;
+        }
+        
+        if (data.product_categories) {
+          document.getElementById('fairProductCategories').value = 
+            Array.isArray(data.product_categories) ? data.product_categories.join(', ') : data.product_categories;
+          updated++;
+        }
+        
+        if (data.key_features) {
+          document.getElementById('fairKeyFeatures').value = 
+            Array.isArray(data.key_features) ? data.key_features.join(', ') : data.key_features;
+          updated++;
+        }
+        
+        showMessage(`Dati estratti: ${updated} campi compilati`, 'success');
+      } catch (e) {
+        showMessage('Errore: ' + e.message, 'danger');
+      }
+    }
+
+    function showMessage(msg, type) {
+      document.getElementById('message').innerHTML = '<div class="alert alert-' + type + '">' + msg + '</div>';
     }
 
     function parseListValue(value) {
@@ -401,6 +396,7 @@
         fair_email: document.getElementById('fairEmail').value,
         folder_path: document.getElementById('folderPath').value,
         name: document.getElementById('fairName').value,
+        year: document.getElementById('fairYear').value ? parseInt(document.getElementById('fairYear').value) : new Date().getFullYear(),
         location: document.getElementById('fairLocation').value,
         dates: document.getElementById('fairDates').value ? [document.getElementById('fairDates').value] : null,
         venue: document.getElementById('fairVenue').value,
@@ -421,13 +417,7 @@
         status: document.getElementById('fairStatus').value,
         instagram: document.getElementById('fairInstagram').value,
         facebook: document.getElementById('fairFacebook').value,
-        tiktok: document.getElementById('fairTiktok').value,
-        contacts: {
-          cold: parseInt(document.getElementById('contactCold').value) || 0,
-          warm: parseInt(document.getElementById('contactWarm').value) || 0,
-          hot: parseInt(document.getElementById('contactHot').value) || 0
-        },
-        web_sources: window.webSources || []
+        tiktok: document.getElementById('fairTiktok').value
       };
 
       try {
@@ -438,59 +428,13 @@
         });
         const result = await resp.json();
         if (resp.ok) {
-          document.getElementById('message').innerHTML = '<div class="alert alert-success">Fiera salvata con successo!</div>';
+          showMessage('Fiera salvata con successo!', 'success');
           setTimeout(() => window.location.href = '/fairs', 1500);
         } else {
-          document.getElementById('message').innerHTML = '<div class="alert alert-danger">Errore: ' + result.detail + '</div>';
+          showMessage('Errore: ' + result.detail, 'danger');
         }
       } catch (err) {
-        document.getElementById('message').innerHTML = '<div class="alert alert-danger">Errore: ' + err.message + '</div>';
-      }
-    });
-    
-    window.webSources = [];
-    
-    function renderWebSources() {
-      const list = document.getElementById('webSourcesList');
-      if (!window.webSources.length) {
-        list.innerHTML = '<p class="text-muted small">Nessuna sorgente web aggiunta</p>';
-        return;
-      }
-      list.innerHTML = window.webSources.map((s, i) => `
-        <div class="d-flex align-items-center justify-content-between bg-light rounded px-2 py-1 mb-1">
-          <span class="badge bg-secondary me-2">${s.source_type}</span>
-          <a href="${s.url}" target="_blank" class="text-truncate" style="max-width:200px">${s.url}</a>
-          <button class="btn btn-sm btn-outline-danger ms-2 py-0 px-1" onclick="removeWebSource(${i})"><i class="fas fa-times"></i></button>
-        </div>
-      `).join('');
-    }
-    
-    function addWebSource() {
-      const url = document.getElementById('newSourceUrl').value.trim();
-      const source_type = document.getElementById('newSourceType').value;
-      if (!url) return;
-      window.webSources.push({ url: url, source_type: source_type, label: source_type, screenshot: null });
-      document.getElementById('newSourceUrl').value = '';
-      renderWebSources();
-    }
-    
-    function removeWebSource(idx) {
-      window.webSources.splice(idx, 1);
-      renderWebSources();
-    }
-    
-    function openVisualEditor() {
-      if (!window.webSources || !window.webSources.length) {
-        alert('Aggiungi almeno una sorgente web prima');
-        return;
-      }
-      window.location.href = '/visual-editor?url=' + encodeURIComponent(window.webSources[0].url);
-    }
-    
-    document.getElementById('visualEditorBtn').addEventListener('click', () => {
-      const url = document.getElementById('fairUrl').value.trim();
-      if (url) {
-        window.location.href = '/visual-editor?url=' + encodeURIComponent(url);
+        showMessage('Errore: ' + err.message, 'danger');
       }
     });
   </script>

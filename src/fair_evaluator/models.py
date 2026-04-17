@@ -29,8 +29,28 @@ class Contact(Base):
 
     fairs = relationship("Fair", secondary=fair_contacts, back_populates="contact_list")
 
+
+class Tag(Base):
+    __tablename__ = "tags"
+    __table_args__ = (Index("idx_tag_name", "name"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, nullable=False, unique=True)
+    color = Column(String, default="#3b82f6")
+    category = Column(String, nullable=True)
+    created_at = Column(String, nullable=True)
+
+    fairs = relationship("Fair", secondary="fair_tags", back_populates="tags")
+
     def __repr__(self):
-        return f"<Contact {self.name} ({self.email})>"
+        return f"<Tag {self.name}>"
+
+
+fair_tags = Table(
+    'fair_tags', Base.metadata,
+    Column('fair_id', String, ForeignKey('fairs.id'), primary_key=True),
+    Column('tag_id', Integer, ForeignKey('tags.id'), primary_key=True),
+)
 
 
 class CommercialProposal(Base):
@@ -114,6 +134,7 @@ class Fair(Base):
     id = Column(String, primary_key=True, index=True)
     name = Column(String, nullable=False, index=True)
     year = Column(Integer, nullable=False, default=2025)
+    duration_days = Column(Integer, nullable=True)
     url = Column(String, nullable=True)
     description = Column(Text, nullable=True)
     folder_path = Column(String, nullable=True)
@@ -158,6 +179,7 @@ class Fair(Base):
     tiktok = Column(String, nullable=True)
 
     contact_list = relationship("Contact", secondary=fair_contacts, back_populates="fairs")
+    tags = relationship("Tag", secondary=fair_tags, back_populates="fairs")
     previous_editions = Column(JSON, nullable=True)
 
     def __repr__(self):
