@@ -115,11 +115,10 @@ class FairCreate(BaseModel):
 
 class FairUpdate(BaseModel):
     name: str | None = None
-year: int | None = None
+    year: int | None = None
     duration_days: int | None = None
     location: str | None = None
     dates: list[str] | None = None
-    location: str | None = None
     target_segments: list[str] | None = None
     expected_visitors: int | None = None
     exhibitors_count: int | None = None
