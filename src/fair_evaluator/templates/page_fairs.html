@@ -40,6 +40,7 @@
           <a class="nav-link active" href="/fairs"><i class="fas fa-building me-2"></i>Fiere</a>
           <a class="nav-link" href="/fairs/new"><i class="fas fa-plus me-2"></i>Nuova Fiera</a>
           <a class="nav-link" href="/calendar"><i class="fas fa-calendar me-2"></i>Calendario</a>
+          <a class="nav-link" href="/tags"><i class="fas fa-tags me-2"></i>Tag</a>
           <a class="nav-link" href="/settings"><i class="fas fa-cog me-2"></i>Impostazioni</a>
         </nav>
       </div>
@@ -112,7 +113,7 @@
                     <th onclick="sortTable('year')" data-sort="year">Anno <i class="fas fa-sort"></i></th>
                     <th onclick="sortTable('dates')" data-sort="dates">Data <i class="fas fa-sort"></i></th>
                     <th onclick="sortTable('location')" data-sort="location">Location <i class="fas fa-sort"></i></th>
-                    <th onclick="sortTable('sector')" data-sort="sector">Settore <i class="fas fa-sort"></i></th>
+                    <th onclick="sortTable('sector')" data-sort="sector">Tag <i class="fas fa-sort"></i></th>
                     <th onclick="sortTable('expected_visitors')" data-sort="expected_visitors">Visitatori <i class="fas fa-sort"></i></th>
                     <th onclick="sortTable('exhibitors_count')" data-sort="exhibitors_count">Espositori <i class="fas fa-sort"></i></th>
                     <th onclick="sortTable('stand_cost')" data-sort="stand_cost">Costo Stand <i class="fas fa-sort"></i></th>
@@ -128,7 +129,7 @@
                       data-location="{{ fair.location | default('') }}"
                       data-year="{{ fair.year if fair.year else '' }}"
                       data-dates="{{ fair.dates[0] if fair.dates and fair.dates[0] else '' }}"
-                      data-sector="{{ fair.sector | lower | default('') }}"
+                      data-sector="{{ fair.tags | map(attribute='name') | join(',') if fair.tags else '' }}"
                       data-expected_visitors="{{ fair.expected_visitors or 0 }}"
                       data-exhibitors_count="{{ fair.exhibitors_count or 0 }}"
                       data-stand_cost="{{ fair.stand_cost or 0 }}">
@@ -139,7 +140,7 @@
                     <td>{{ fair.year if fair.year else '-' }}</td>
                     <td>{{ fair.dates[0] if fair.dates and fair.dates[0] else '-' }}</td>
                     <td>{{ fair.location if fair.location else '-' }}</td>
-                    <td>{% if fair.sector %}<span class="badge bg-success">{{ fair.sector }}</span>{% else %}-{% endif %}</td>
+                    <td>{% if fair.tags %}{% for t in fair.tags[:3] %}<span class="badge me-1" style="background:{{ t.color }}; color: white;">{{ t.name }}</span>{% endfor %}{% if fair.tags | length > 3 %}<span class="badge bg-secondary">+{{ fair.tags | length - 3 }}</span>{% endif %}{% else %}-{% endif %}</td>
                     <td>{{ "{:,}".format(fair.expected_visitors) if fair.expected_visitors else '-' }}</td>
                     <td>{{ "{:,}".format(fair.exhibitors_count) if fair.exhibitors_count else '-' }}</td>
                     <td>{{ "{:,} €".format(fair.stand_cost) if fair.stand_cost else '-' }}</td>
