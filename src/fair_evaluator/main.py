@@ -439,8 +439,11 @@ class TagsResponse(BaseModel):
 
 
 @app.get("/api/tags", response_model=list[dict])
-def list_tags(db: Session = Depends(get_db)):
-    tags = db.query(Tag).order_by(tag.category, tag.name).all()
+def list_tags(category: str = None, db: Session = Depends(get_db)):
+    query = db.query(Tag)
+    if category:
+        query = query.filter(Tag.category == category)
+    tags = query.order_by(Tag.category, Tag.name).all()
     return [{"id": t.id, "name": t.name, "color": t.color, "category": t.category} for t in tags]
 
 
@@ -1875,6 +1878,47 @@ def calendar_page():
     env = Environment(loader=FileSystemLoader(str(TEMPLATE_DIR)))
     template = env.get_template("page_calendar.html")
     return HTMLResponse(template.render(nav_active="calendar"))
+
+
+@app.get("/tags", response_class=HTMLResponse)
+def tags_page():
+    from jinja2 import Environment, FileSystemLoader
+    env = Environment(loader=FileSystemLoader(str(TEMPLATE_DIR)))
+    template = env.get_template("page_tags.html")
+    return HTMLResponse(template.render(nav_active="tags"))
+
+
+@app.post("/api/fairs/{fair_id}/tags")
+def update_fair_tags(fair_id: str, data: dict, db: Session = Depends(get_db)):
+    from .models import Tag, fair_tags as FairTagsTable
+    fair = db.query(Fair).filter(Fair.id == fair_id).first()
+    if not fair:
+        raise HTTPException(status_code=404, detail="Fair not found")
+    
+    tag_ids = data.get("tag_ids", [])
+    
+    db.execute(FairTagsTable.delete().where(FairTagsTable.c.fair_id == fair_id))
+    
+    for tag_id in tag_ids:
+        db.execute(FairTagsTable.insert().values(fair_id=fair_id, tag_id=tag_id))
+    
+    db.commit()
+    
+    return {"status": "updated", "tag_ids": tag_ids}
+
+
+@app.get("/api/fairs/{fair_id}/tags", response_model=list[dict])
+def get_fair_tags(fair_id: str, db: Session = Depends(get_db)):
+    from .models import Tag, fair_tags as FairTagsTable
+    fair = db.query(Fair).filter(Fair.id == fair_id).first()
+    if not fair:
+        raise HTTPException(status_code=404, detail="Fair not found")
+    
+    stmt = FairTagsTable.select().where(FairTagsTable.c.fair_id == fair_id)
+    tag_ids = [row[1] for row in db.execute(stmt).fetchall()]
+    
+    tags = db.query(Tag).filter(Tag.id.in_(tag_ids)).all() if tag_ids else []
+    return [{"id": t.id, "name": t.name, "color": t.color, "category": t.category} for t in tags]
 
 
 @app.get("/settings", response_class=HTMLResponse)
