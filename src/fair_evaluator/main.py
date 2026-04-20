@@ -656,6 +656,39 @@ def update_fair(fair_id: str, fair_data: FairUpdate, db: Session = Depends(get_d
     return {"id": fair.id, "status": "updated"}
 
 
+@app.post("/api/fairs/{fair_id}/attachments")
+async def upload_fair_attachments(fair_id: str, files: list[UploadFile] = File(...), db: Session = Depends(get_db)):
+    fair = db.query(Fair).filter(Fair.id == fair_id).first()
+    if not fair:
+        raise HTTPException(status_code=404, detail="Fair not found")
+    
+    UPLOAD_DIR = Path("./data/uploads")
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    
+    attachments = fair.attachments or []
+    
+    for file in files:
+        file_id = str(uuid4())
+        file_ext = Path(file.filename).suffix
+        local_path = UPLOAD_DIR / f"{file_id}{file_ext}"
+        
+        contents = await file.read()
+        with open(local_path, "wb") as f:
+            f.write(contents)
+        
+        attachments.append({
+            "file_id": file_id,
+            "filename": file.filename,
+            "file_path": str(local_path),
+            "uploaded_at": datetime.now().isoformat()
+        })
+    
+    fair.attachments = attachments
+    db.commit()
+    
+    return {"status": "uploaded", "count": len(files)}
+
+
 def extract_local_fair_data(title_tag, meta_desc, h1_texts, h2_texts, all_text, emails, phones, future_dates, venue_candidates) -> dict:
     """Algoritmo locale per estrarre dati della fiera senza AI."""
     data = {"name": "", "next_date": "", "organizer": "", "sector": "", "venue": "", "location": "", "email": "", "phone": "", "expected_visitors": 0, "exhibitors_count": 0, "stand_cost": 0, "frequency": "", "summary": ""}
