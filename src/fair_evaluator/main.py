@@ -1505,8 +1505,8 @@ class ReportFormat(BaseModel):
     format: str = "html"
 
 
-@app.post("/api/fairs/{fair_id}/report")
-def generate_report(fair_id: str, fmt: ReportFormat = ReportFormat(format="html"), db: Session = Depends(get_db)):
+@app.get("/api/fairs/{fair_id}/report")
+def generate_report(fair_id: str, format: str = "html", db: Session = Depends(get_db)):
     fair = db.query(Fair).filter(Fair.id == fair_id).first()
     if not fair:
         raise HTTPException(status_code=404, detail="Fair not found")
