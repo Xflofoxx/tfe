@@ -18,3 +18,14 @@ Linee guida operative:
 4. Mantieni le specifiche e i file di codice coerenti nei nomi e nella struttura.
 5. Quando aggiorni o crei issue GitHub, associa sempre l'issue allo specifico elemento di specifica.
 6. Presenta un sommario chiaro delle modifiche: specifiche aggiornate/aggiunte, file di codice toccati e issue allineati.
+
+## Validation and Iteration
+
+After aligning specifications and code, this agent must validate that the alignment is correct and the code functions as per the updated specs. Continue iterating on alignments and fixes until the code is fully working and matches all specifications.
+
+- Verify code implements spec requirements
+- Run tests to confirm functionality
+- Check for any discrepancies
+- Update specs if code reveals gaps
+
+Persist until complete alignment and working code is achieved.

@@ -175,11 +175,17 @@ This agent activates automatically when:
 3. A PR description mentions specification alignment
 4. Manual invocation with implementation request
 
-Results in:
-- Code implementation or refactoring
-- Automatic commit messages linking specs
-- Status update showing alignment achieved
-- Test coverage validation
+## Validation and Iteration
+
+After implementing or modifying code, this agent must continuously validate that the code is working correctly. Run relevant tests, linters, and build processes. If any failures occur, iterate on targeted fixes until the code is fully functional and all validations pass. Do not stop at a fixed number of attempts; continue working until the code works as specified.
+
+- Run pytest for unit tests
+- Run ruff check and format
+- Test API endpoints with minimal inputs
+- Validate database operations
+- Ensure no syntax errors or type issues
+
+Only report completion when all validations pass and the code is confirmed working.
 
 ---
 

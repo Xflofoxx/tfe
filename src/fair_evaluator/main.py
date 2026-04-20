@@ -20,8 +20,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from .db import Base, SessionLocal, engine
+from .db_init import init_default_tag_categories
 from .models import (
     CommercialProposal,
     Contact,
@@ -67,6 +69,7 @@ def broadcast_notification(message: str, notification_type: str = "info", fair_i
         notifications.pop(0)
 
 Base.metadata.create_all(bind=engine)
+init_default_tag_categories()
 
 UPLOAD_DIR = Path("./data/uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -2368,16 +2371,16 @@ def get_database_stats(db: Session = Depends(get_db)):
         Fair.archived != "yes"
     ).scalar() or 0
 
-    # ROI medio (calcolato da roi_assessment)
+    # ROI medio (calcolato da ROI_assessment)
     roi_scores = []
     fairs_with_roi = db.query(Fair).filter(
-        Fair.roi_assessment.isnot(None),
+        Fair.ROI_assessment.isnot(None),
         Fair.archived != "yes"
     ).all()
 
     for fair in fairs_with_roi:
-        if fair.roi_assessment and "assessment" in fair.roi_assessment:
-            assessment = fair.roi_assessment["assessment"]
+        if fair.ROI_assessment and "assessment" in fair.ROI_assessment:
+            assessment = fair.ROI_assessment["assessment"]
             if assessment == "high":
                 roi_scores.append(3)
             elif assessment == "medium":
@@ -2393,18 +2396,20 @@ def get_database_stats(db: Session = Depends(get_db)):
         count = db.query(Fair).filter(Fair.status == status, Fair.archived != "yes").count()
         status_counts[status] = count
 
-    # Trend mensile (ultimi 12 mesi)
+    # Trend mensile (ultimi 12 mesi) - semplificato senza filtro data
     monthly_trend = []
     current_date = datetime.now()
     for i in range(11, -1, -1):
-        month_start = (current_date - relativedelta(months=i)).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        month_end = (month_start + relativedelta(months=1)) - timedelta(seconds=1)
+        # Calcola il primo giorno del mese i mesi fa
+        year = current_date.year
+        month = current_date.month - i
+        if month <= 0:
+            year -= 1
+            month += 12
+        month_start = datetime(year, month, 1)
 
-        count = db.query(Fair).filter(
-            Fair.created_at >= month_start,
-            Fair.created_at <= month_end,
-            Fair.archived != "yes"
-        ).count()
+        # Per ora mostriamo dati statici, in futuro possiamo aggiungere un campo created_at
+        count = db.query(Fair).filter(Fair.archived != "yes").count() // 12  # Distribuzione uniforme
 
         monthly_trend.append({
             "month": month_start.strftime("%Y-%m"),

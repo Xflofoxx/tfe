@@ -174,6 +174,18 @@ review_fixes:
 - Monthly quality assessments
 - Custom alerts for critical issues
 
+## Validation and Iteration
+
+This agent must continue fixing code quality issues until all linting, formatting, and best practice checks pass completely. Do not limit to a fixed number of iterations; persist until the codebase meets all quality standards.
+
+- Run ruff check and fix all issues
+- Run mypy for type checking
+- Run bandit and safety for security
+- Apply black formatting
+- Ensure no remaining violations
+
+Only complete when all tools report zero issues and the code is quality-compliant.
+
 ---
 
 **Version**: 1.0.0

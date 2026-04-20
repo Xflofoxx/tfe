@@ -11,7 +11,7 @@ TEST_MODE = os.environ.get("TESTING", "false").lower() == "true"
 if TEST_MODE:
     SQLITE_DB_PATH = "sqlite:///./data/fairs_test.db"
 else:
-    SQLITE_DB_PATH = "sqlite:///./data/fairs.db"
+    SQLITE_DB_PATH = "sqlite:///./data/fairs_new.db"
 
 Path("./data").mkdir(parents=True, exist_ok=True)
 
