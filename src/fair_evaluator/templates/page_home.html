@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
     .sidebar { background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%); min-height: 100vh; }
@@ -58,83 +59,48 @@
         <div class="row mb-4">
           <div class="col-md-3">
             <div class="card stat-card p-4 text-center stat-fatte">
-              <div class="fs-2">{{ stats.fatte }}</div>
-              <div class="opacity-75">Fiere Fatte</div>
+              <div class="fs-2">{{ stats.total_fairs }}</div>
+              <div class="opacity-75">Totale Fiere</div>
             </div>
           </div>
           <div class="col-md-3">
             <div class="card stat-card p-4 text-center stat-valutazione">
-              <div class="fs-2">{{ stats.in_valutazione }}</div>
-              <div class="opacity-75">In Valutazione</div>
+              <div class="fs-2">{{ stats.active_fairs }}</div>
+              <div class="opacity-75">Fiere Attive</div>
             </div>
           </div>
           <div class="col-md-3">
             <div class="card stat-card p-4 text-center stat-prossime">
-              <div class="fs-2">{{ stats.prossime }}</div>
-              <div class="opacity-75">Prossime</div>
+              <div class="fs-2">€ {{ "%.0f"|format(stats.budget_total) }}</div>
+              <div class="opacity-75">Budget Totale</div>
             </div>
           </div>
           <div class="col-md-3">
             <div class="card stat-card p-4 text-center stat-costi">
-              <div class="fs-2">€ {{ stats.total_stand_cost }}</div>
-              <div class="opacity-75">Spese Stand</div>
+              <div class="fs-2">{{ stats.avg_roi }}</div>
+              <div class="opacity-75">ROI Medio</div>
             </div>
           </div>
         </div>
         
         <div class="row mb-4">
-          <div class="col-md-4">
+          <div class="col-md-6">
             <div class="card">
-              <div class="card-header"><h5 class="mb-0"><i class="fas fa-users me-2"></i>Contatti Totali</h5></div>
+              <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-chart-pie me-2"></i>Distribuzione Stati Fiere</h5>
+              </div>
               <div class="card-body">
-                <div class="d-flex justify-content-between mb-2">
-                  <span class="badge contact-cold p-2"><i class="fas fa-snowflake me-1"></i> Cold</span>
-                  <strong>{{ stats.contacts.cold }}</strong>
-                </div>
-                <div class="d-flex justify-content-between mb-2">
-                  <span class="badge contact-warm p-2"><i class="fas fa-fire me-1"></i> Warm</span>
-                  <strong>{{ stats.contacts.warm }}</strong>
-                </div>
-                <div class="d-flex justify-content-between">
-                  <span class="badge contact-hot p-2"><i class="fas fa-fire-alt me-1"></i> Hot</span>
-                  <strong>{{ stats.contacts.hot }}</strong>
-                </div>
-                <hr>
-                <div class="d-flex justify-content-between">
-                  <strong>Totale</strong>
-                  <strong>{{ stats.contacts.cold + stats.contacts.warm + stats.contacts.hot }}</strong>
-                </div>
+                <canvas id="statusChart" width="400" height="300"></canvas>
               </div>
             </div>
           </div>
-          <div class="col-md-8">
+          <div class="col-md-6">
             <div class="card">
-              <div class="card-header"><h5 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Contatti per Fiera</h5></div>
-              <div class="card-body p-0">
-                {% if stats.contacts_by_fair %}
-                <table class="table table-sm mb-0">
-                  <thead class="table-light">
-                    <tr>
-                      <th>Fiera</th>
-                      <th class="text-center">Cold</th>
-                      <th class="text-center">Warm</th>
-                      <th class="text-center">Hot</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {% for cf in stats.contacts_by_fair %}
-                    <tr>
-                      <td>{{ cf.name }}</td>
-                      <td class="text-center"><span class="badge bg-secondary">{{ cf.cold }}</span></td>
-                      <td class="text-center"><span class="badge bg-warning text-dark">{{ cf.warm }}</span></td>
-                      <td class="text-center"><span class="badge bg-danger">{{ cf.hot }}</span></td>
-                    </tr>
-                    {% endfor %}
-                  </tbody>
-                </table>
-                {% else %}
-                <p class="text-muted text-center py-3">Nessun dato sui contatti</p>
-                {% endif %}
+              <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-chart-line me-2"></i>Trend Mensile</h5>
+              </div>
+              <div class="card-body">
+                <canvas id="trendChart" width="400" height="300"></canvas>
               </div>
             </div>
           </div>
@@ -215,6 +181,91 @@
     document.addEventListener('DOMContentLoaded', function() {
       loadRecentNotifications();
       connectSSE();
+      
+      // Create status distribution chart
+      const statusCtx = document.getElementById('statusChart').getContext('2d');
+      const statusData = {{ stats.status_distribution | tojson }};
+      
+      new Chart(statusCtx, {
+        type: 'doughnut',
+        data: {
+          labels: ['In Valutazione', 'Approvata', 'In Gestione', 'Conclusa', 'Rifiutata'],
+          datasets: [{
+            data: [
+              statusData.in_valutazione || 0,
+              statusData.approvata || 0,
+              statusData.in_gestione || 0,
+              statusData.conclusa || 0,
+              statusData.rifiutata || 0
+            ],
+            backgroundColor: [
+              '#f59e0b', // giallo
+              '#10b981', // verde
+              '#3b82f6', // blu
+              '#6b7280', // grigio
+              '#ef4444'  // rosso
+            ],
+            borderWidth: 2,
+            borderColor: '#ffffff'
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: {
+              position: 'bottom'
+            },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                  const percentage = total > 0 ? Math.round((context.parsed / total) * 100) : 0;
+                  return `${context.label}: ${context.parsed} (${percentage}%)`;
+                }
+              }
+            }
+          }
+        }
+      });
+      
+      // Create monthly trend chart
+      const trendCtx = document.getElementById('trendChart').getContext('2d');
+      const trendData = {{ stats.monthly_trend | tojson }};
+      
+      new Chart(trendCtx, {
+        type: 'line',
+        data: {
+          labels: trendData.map(item => {
+            const date = new Date(item.month + '-01');
+            return date.toLocaleDateString('it-IT', { month: 'short', year: 'numeric' });
+          }),
+          datasets: [{
+            label: 'Fiere Create',
+            data: trendData.map(item => item.count),
+            borderColor: '#3b82f6',
+            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+            borderWidth: 2,
+            fill: true,
+            tension: 0.4
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: {
+              display: false
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: {
+                stepSize: 1
+              }
+            }
+          }
+        }
+      });
     });
   </script>
 </body>

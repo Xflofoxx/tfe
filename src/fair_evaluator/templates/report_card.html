@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Report Scheda Fiera - {{ fair.name }}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; padding: 20px; max-width: 1000px; margin: 0 auto; line-height: 1.6; color: #1e293b; background: #f8fafc; }
+    .container { background: white; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); padding: 32px; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 2px solid #e2e8f0; }
+    .fair-title { font-size: 1.8rem; font-weight: 700; color: #0f172a; }
+    .fair-meta { color: #64748b; font-size: 0.95rem; margin-top: 4px; }
+    .actions { display: flex; gap: 8px; }
+    .btn { padding: 8px 16px; border-radius: 6px; font-size: 0.9rem; font-weight: 500; cursor: pointer; text-decoration: none; display: inline-block; border: none; }
+    .btn-primary { background: #3b82f6; color: white; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-secondary { background: #e2e8f0; color: #475569; }
+    .btn-secondary:hover { background: #cbd5e1; }
+    .section { margin-bottom: 24px; }
+    .section-title { font-size: 1.1rem; font-weight: 600; color: #334155; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid #3b82f6; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+    .card { background: #f8fafc; border-radius: 8px; padding: 16px; }
+    .card-label { font-size: 0.8rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+    .card-value { font-size: 1.1rem; font-weight: 600; color: #1e293b; margin-top: 4px; }
+    .badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; }
+    .badge-recommended { background: #d1fae5; color: #065f46; }
+    .badge-not-recommended { background: #fee2e2; color: #991b1b; }
+    .badge-neutral { background: #fef3c7; color: #92400e; }
+    .badge-in-valutazione { background: #dbeafe; color: #1e40af; }
+    .badge-approvata { background: #d1fae5; color: #065f46; }
+    .badge-in-gestione { background: #fef3c7; color: #92400e; }
+    .badge-conclusa { background: #e2e8f0; color: #475569; }
+    .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .tag { display: inline-block; padding: 2px 10px; border-radius: 4px; font-size: 0.8rem; color: white; }
+    .recommendation-box { padding: 16px; border-radius: 8px; margin-bottom: 16px; }
+    .recommendation-box.positive { background: #ecfdf5; border-left: 4px solid #10b981; }
+    .recommendation-box.negative { background: #fef2f2; border-left: 4px solid #ef4444; }
+    .recommendation-box.neutral { background: #fffbeb; border-left: 4px solid #f59e0b; }
+    .rationale { color: #475569; font-size: 0.95rem; margin-top: 12px; }
+    .info-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e2e8f0; }
+    .info-label { color: #64748b; }
+    .info-value { font-weight: 500; }
+    .footer { margin-top: 24px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 0.85rem; color: #94a3b8; display: flex; justify-content: space-between; }
+    .back-link { color: #3b82f6; text-decoration: none; }
+    .back-link:hover { text-decoration: underline; }
+    @media print {
+      body { background: white; }
+      .container { box-shadow: none; }
+      .actions, .back-link { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div>
+        <div class="fair-title">{{ fair.name }}</div>
+        <div class="fair-meta">{{ fair.year }}{% if fair.dates and fair.dates[0] %} | {{ fair.dates[0] }}{% endif %}{% if fair.location %} | {{ fair.location }}{% endif %}</div>
+        {% if fair.organizer %}<div class="fair-meta">Organizzatore: {{ fair.organizer }}</div>{% endif %}
+      </div>
+      <div class="actions">
+        <button class="btn btn-secondary" onclick="window.print()">Esporta PDF</button>
+        <a href="/fairs/{{ fair.id }}" class="btn btn-primary">Torna alla Fiera</a>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Valutazione</div>
+      {% set rec = fair.recommendation or fair.status or 'Da valutare' %}
+      <div class="recommendation-box {% if rec == 'Consigliata' %}positive{% elif rec == 'Non Consigliata' %}negative{% else %}neutral{% endif %}">
+        <span class="badge {% if rec == 'Consigliata' %}badge-recommended{% elif rec == 'Non Consigliata' %}badge-not-recommended{% elif fair.status == 'in_valutazione' %}badge-in-valutazione{% elif fair.status == 'approvata' %}badge-approvata{% elif fair.status == 'in_gestione' %}badge-in-gestione{% elif fair.status == 'conclusa' %}badge-conclusa{% else %}badge-neutral{% endif %}">
+          {{ rec }}
+        </span>
+        {% if fair.rationale %}
+        <div class="rationale">{{ fair.rationale }}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Dati Principali</div>
+      <div class="grid">
+        <div class="card">
+          <div class="card-label">Settore</div>
+          <div class="card-value">{{ fair.sector or '-' }}</div>
+        </div>
+        <div class="card">
+          <div class="card-label">Location</div>
+          <div class="card-value">{{ fair.location or '-' }}</div>
+        </div>
+        <div class="card">
+          <div class="card-label">Venue</div>
+          <div class="card-value">{{ fair.venue or '-' }}</div>
+        </div>
+        <div class="card">
+          <div class="card-label">Frequenza</div>
+          <div class="card-value">{{ fair.frequency or '-' }}</div>
+        </div>
+        <div class="card">
+          <div class="card-label">Visitatori Attesi</div>
+          <div class="card-value">{{ fair.expected_visitors if fair.expected_visitors else '-' }}</div>
+        </div>
+        <div class="card">
+          <div class="card-label">Espositori</div>
+          <div class="card-value">{{ fair.exhibitors_count if fair.exhibitors_count else '-' }}</div>
+        </div>
+        <div class="card">
+          <div class="card-label">Costo Stand Stimato</div>
+          <div class="card-value">{% if fair.stand_cost %}€{{ fair.stand_cost }}{% else %}-{% endif %}</div>
+        </div>
+        <div class="card">
+          <div class="card-label">Edizione</div>
+          <div class="card-value">{{ fair.edition or '-' }}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Tag</div>
+      <div class="tags">
+        {% if fair.tags and fair.tags|length > 0 %}
+          {% for tag in fair.tags %}
+          <span class="tag" style="background: {{ tag.color }};">{{ tag.name }}</span>
+          {% endfor %}
+        {% else %}
+        <span style="color: #64748b;">Nessun tag</span>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Target e Categorie</div>
+      {% if fair.visitor_profile %}
+      <div class="info-row">
+        <span class="info-label">Profilo Visitatori</span>
+        <span class="info-value">{{ fair.visitor_profile }}</span>
+      </div>
+      {% endif %}
+      {% if fair.target_segments %}
+      <div class="info-row">
+        <span class="info-label">Segmenti Target</span>
+        <span class="info-value">{{ fair.target_segments|join(', ') }}</span>
+      </div>
+      {% endif %}
+      {% if fair.product_categories %}
+      <div class="info-row">
+        <span class="info-label">Categorie Prodotti</span>
+        <span class="info-value">{{ fair.product_categories|join(', ') }}</span>
+      </div>
+      {% endif %}
+      {% if not fair.visitor_profile and not fair.target_segments and not fair.product_categories %}
+      <div style="color: #64748b;">Dati non disponibili</div>
+      {% endif %}
+    </div>
+
+    {% if fair.description %}
+    <div class="section">
+      <div class="section-title">Descrizione</div>
+      <p>{{ fair.description }}</p>
+    </div>
+    {% endif %}
+
+    {% if fair.key_features and fair.key_features|length > 0 %}
+    <div class="section">
+      <div class="section-title">Caratteristiche Chiave</div>
+      <ul>
+        {% for feature in fair.key_features %}
+        <li>{{ feature }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    <div class="footer">
+      <a href="/fairs/{{ fair.id }}" class="back-link">&larr; Torna alla scheda fiera</a>
+      <span>{% if fair.ai_last_updated %}AI aggiornato: {{ fair.ai_last_updated[:10] }}{% else %}Data non disponibile{% endif %}</span>
+    </div>
+  </div>
+</body>
+</html>

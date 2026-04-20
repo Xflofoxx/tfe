@@ -1,19 +1,38 @@
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
 import requests
 import urllib3
-from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, UploadFile, Request
+from fastapi import (
+    BackgroundTasks,
+    Body,
+    Depends,
+    FastAPI,
+    File,
+    HTTPException,
+    Request,
+    UploadFile,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from .db import Base, SessionLocal, engine
-from .models import Fair, Settings, Contact, FairAnalysis, OfferComponent, CommercialProposal, Tag
+from .models import (
+    CommercialProposal,
+    Contact,
+    Fair,
+    FairAnalysis,
+    OfferComponent,
+    Settings,
+    Tag,
+    TagCategory,
+    TagAnalytics,
+)
 from .services.ollama import OllamaClient
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -77,6 +96,51 @@ def get_settings_db(db: Session = Depends(get_db)):
     return settings
 
 
+def find_or_create_tag(db: Session, name: str, category: str = None) -> Tag:
+    name_normalized = name.strip().lower()
+    existing = db.query(Tag).filter(Tag.name == name_normalized).first()
+    if existing:
+        return existing
+    tag = Tag(
+        name=name_normalized,
+        color="#3b82f6",
+        category=category,
+        created_at=datetime.now().isoformat()
+    )
+    db.add(tag)
+    db.flush()
+    return tag
+
+
+def convert_fair_data_to_tags(db: Session, fair) -> list[Tag]:
+    tags = []
+
+    if fair.sector:
+        sector_tag = find_or_create_tag(db, fair.sector, "settore")
+        tags.append(sector_tag)
+
+    if fair.visitor_profile:
+        for profile in fair.visitor_profile.split(","):
+            profile = profile.strip()
+            if profile:
+                profile_tag = find_or_create_tag(db, profile, "profilo_visitatore")
+                tags.append(profile_tag)
+
+    if fair.target_segments:
+        for segment in fair.target_segments:
+            if isinstance(segment, str) and segment.strip():
+                segment_tag = find_or_create_tag(db, segment.strip(), "segmento")
+                tags.append(segment_tag)
+
+    if fair.product_categories:
+        for cat in fair.product_categories:
+            if isinstance(cat, str) and cat.strip():
+                cat_tag = find_or_create_tag(db, cat.strip(), "categoria")
+                tags.append(cat_tag)
+
+    return tags
+
+
 class FairCreate(BaseModel):
     fair_url: str
     site_url: str | None = ""
@@ -111,6 +175,7 @@ class FairCreate(BaseModel):
     contacts: dict | None = None
     web_sources: list | None = None
     extraction_regions: list | None = None
+    ai_analyze: bool = False
 
 
 class FairUpdate(BaseModel):
@@ -150,47 +215,245 @@ class FairUpdate(BaseModel):
     tiktok: str | None = None
     previous_editions: list | None = None
     tag_ids: list[int] | None = None
+    ai_analyze: bool = False
 
 
 class SettingsUpdate(BaseModel):
+    # AI & LLM Settings
     ollama_url: str | None = None
     ollama_model: str | None = None
+    ollama_timeout: int | None = None
+    ollama_fallback_enabled: str | None = None
+
+    # Business Strategy
     strategy_prompt: str | None = None
+    strategy_pdf_path: str | None = None
+    business_objectives: str | None = None
+    target_markets: list | None = None
+    annual_budget: float | None = None
+    participation_criteria: dict | None = None
+
+    # UI Preferences
+    ui_theme: str | None = None
+    ui_compact_mode: str | None = None
+    notifications_enabled: str | None = None
+    email_notifications: str | None = None
+    language: str | None = None
+
+    # System Settings
+    max_upload_size: int | None = None
+    max_files_per_fair: int | None = None
+    cache_ttl: int | None = None
+    background_jobs_concurrency: int | None = None
+    password_policy: dict | None = None
+    session_timeout: int | None = None
+    audit_logging: str | None = None
+
+    # Integrations
+    webhooks_enabled: str | None = None
+    webhook_url: str | None = None
+    webhook_secret: str | None = None
+    api_keys: list | None = None
+
+    # Legacy
     default_network_path: str | None = None
 
 
 @app.get("/api/settings")
 def get_settings_endpoint(db: Session = Depends(get_db)):
     s = get_settings_db(db)
-    return {"ollama_url": s.ollama_url, "ollama_model": s.ollama_model, "strategy_prompt": s.strategy_prompt or "", "default_network_path": s.default_network_path or ""}
+    return {
+        # AI & LLM Settings
+        "ollama_url": s.ollama_url,
+        "ollama_model": s.ollama_model,
+        "ollama_timeout": s.ollama_timeout,
+        "ollama_fallback_enabled": s.ollama_fallback_enabled,
+
+        # Business Strategy
+        "strategy_prompt": s.strategy_prompt or "",
+        "strategy_pdf_path": s.strategy_pdf_path,
+        "business_objectives": s.business_objectives,
+        "target_markets": s.target_markets or [],
+        "annual_budget": s.annual_budget,
+        "participation_criteria": s.participation_criteria or {},
+
+        # UI Preferences
+        "ui_theme": s.ui_theme,
+        "ui_compact_mode": s.ui_compact_mode,
+        "notifications_enabled": s.notifications_enabled,
+        "email_notifications": s.email_notifications,
+        "language": s.language,
+
+        # System Settings
+        "max_upload_size": s.max_upload_size,
+        "max_files_per_fair": s.max_files_per_fair,
+        "cache_ttl": s.cache_ttl,
+        "background_jobs_concurrency": s.background_jobs_concurrency,
+        "password_policy": s.password_policy or {},
+        "session_timeout": s.session_timeout,
+        "audit_logging": s.audit_logging,
+
+        # Integrations
+        "webhooks_enabled": s.webhooks_enabled,
+        "webhook_url": s.webhook_url,
+        "webhook_secret": s.webhook_secret,
+        "api_keys": s.api_keys or [],
+
+        # Legacy
+        "default_network_path": s.default_network_path or ""
+    }
 
 
 @app.post("/api/settings")
 def update_settings(settings: SettingsUpdate, db: Session = Depends(get_db)):
     s = get_settings_db(db)
+
+    # AI & LLM Settings
     if settings.ollama_url is not None:
         s.ollama_url = settings.ollama_url
     if settings.ollama_model is not None:
         s.ollama_model = settings.ollama_model
+    if settings.ollama_timeout is not None:
+        s.ollama_timeout = settings.ollama_timeout
+    if settings.ollama_fallback_enabled is not None:
+        s.ollama_fallback_enabled = settings.ollama_fallback_enabled
+
+    # Business Strategy
     if settings.strategy_prompt is not None:
         s.strategy_prompt = settings.strategy_prompt
+    if settings.strategy_pdf_path is not None:
+        s.strategy_pdf_path = settings.strategy_pdf_path
+    if settings.business_objectives is not None:
+        s.business_objectives = settings.business_objectives
+    if settings.target_markets is not None:
+        s.target_markets = settings.target_markets
+    if settings.annual_budget is not None:
+        s.annual_budget = settings.annual_budget
+    if settings.participation_criteria is not None:
+        s.participation_criteria = settings.participation_criteria
+
+    # UI Preferences
+    if settings.ui_theme is not None:
+        s.ui_theme = settings.ui_theme
+    if settings.ui_compact_mode is not None:
+        s.ui_compact_mode = settings.ui_compact_mode
+    if settings.notifications_enabled is not None:
+        s.notifications_enabled = settings.notifications_enabled
+    if settings.email_notifications is not None:
+        s.email_notifications = settings.email_notifications
+    if settings.language is not None:
+        s.language = settings.language
+
+    # System Settings
+    if settings.max_upload_size is not None:
+        s.max_upload_size = settings.max_upload_size
+    if settings.max_files_per_fair is not None:
+        s.max_files_per_fair = settings.max_files_per_fair
+    if settings.cache_ttl is not None:
+        s.cache_ttl = settings.cache_ttl
+    if settings.background_jobs_concurrency is not None:
+        s.background_jobs_concurrency = settings.background_jobs_concurrency
+    if settings.password_policy is not None:
+        s.password_policy = settings.password_policy
+    if settings.session_timeout is not None:
+        s.session_timeout = settings.session_timeout
+    if settings.audit_logging is not None:
+        s.audit_logging = settings.audit_logging
+
+    # Integrations
+    if settings.webhooks_enabled is not None:
+        s.webhooks_enabled = settings.webhooks_enabled
+    if settings.webhook_url is not None:
+        s.webhook_url = settings.webhook_url
+    if settings.webhook_secret is not None:
+        s.webhook_secret = settings.webhook_secret
+    if settings.api_keys is not None:
+        s.api_keys = settings.api_keys
+
+    # Legacy
     if settings.default_network_path is not None:
         s.default_network_path = settings.default_network_path
+
+    # Update timestamp
+    s.updated_at = datetime.now().isoformat()
+
     db.commit()
     return {"status": "saved"}
+
+
+@app.post("/api/settings/reset")
+def reset_settings(category: str = None, db: Session = Depends(get_db)):
+    """Reset settings to defaults. If category specified, reset only that category."""
+    s = get_settings_db(db)
+
+    if category == "ai" or not category:
+        s.ollama_url = "http://localhost:11434"
+        s.ollama_model = "llama3.2"
+        s.ollama_timeout = 120
+        s.ollama_fallback_enabled = "yes"
+
+    if category == "strategy" or not category:
+        s.strategy_prompt = None
+        s.strategy_pdf_path = None
+        s.business_objectives = None
+        s.target_markets = None
+        s.annual_budget = None
+        s.participation_criteria = None
+
+    if category == "ui" or not category:
+        s.ui_theme = "light"
+        s.ui_compact_mode = "no"
+        s.notifications_enabled = "yes"
+        s.email_notifications = "yes"
+        s.language = "it"
+
+    if category == "system" or not category:
+        s.max_upload_size = 10485760  # 10MB
+        s.max_files_per_fair = 50
+        s.cache_ttl = 3600
+        s.background_jobs_concurrency = 5
+        s.password_policy = None
+        s.session_timeout = 3600
+        s.audit_logging = "yes"
+
+    if category == "integrations" or not category:
+        s.webhooks_enabled = "no"
+        s.webhook_url = None
+        s.webhook_secret = None
+        s.api_keys = None
+
+    if not category:
+        s.default_network_path = None
+
+    s.updated_at = datetime.now().isoformat()
+    db.commit()
+
+    return {"status": "reset", "category": category or "all"}
 
 
 @app.get("/api/settings/ollama-status")
 def check_ollama_status(db: Session = Depends(get_db)):
     s = get_settings_db(db)
     try:
-        resp = requests.get(f"{s.ollama_url}/api/tags", timeout=3)
-        if resp.status_code == 200:
-            models = resp.json().get("models", [])
-            return {"status": "online", "available_models": [m.get("name", "") for m in models], "current_model": s.ollama_model}
-    except Exception:
-        pass
-    return {"status": "offline", "available_models": []}
+        import requests
+        response = requests.get(f"{s.ollama_url}/api/tags", timeout=10)
+        if response.status_code == 200:
+            models_data = response.json()
+            available_models = [model['name'] for model in models_data.get('models', [])]
+            current_model_available = s.ollama_model in available_models
+
+            return {
+                "status": "online",
+                "url": s.ollama_url,
+                "current_model": s.ollama_model,
+                "current_model_available": current_model_available,
+                "available_models": available_models,
+                "version": models_data.get('version', 'unknown')
+            }
+        else:
+            return {"status": "error", "message": f"HTTP {response.status_code}"}
+    except Exception as e:
+        return {"status": "offline", "message": str(e)}
 
 
 @app.get("/api/notifications/stream")
@@ -203,7 +466,7 @@ def notifications_stream(request):
             for n in notifs:
                 last_id = n["id"]
                 yield f"data: {n}\n\n"
-    
+
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
@@ -223,10 +486,10 @@ def scan_network_folder(data: ScanFolderRequest, db: Session = Depends(get_db)):
     folder = data.folder_path
     if not folder:
         raise HTTPException(status_code=400, detail="Folder path required")
-    
+
     found_count = 0
     errors = []
-    
+
     try:
         if not os.path.exists(folder):
             try:
@@ -236,9 +499,9 @@ def scan_network_folder(data: ScanFolderRequest, db: Session = Depends(get_db)):
                     return {"found": 0, "errors": ["Percorso non accessibile"]}
             except Exception as e:
                 return {"found": 0, "errors": [str(e)]}
-        
+
         fair_name_pattern = re.compile(r"^(.+?)\s*(\d{4})?\s*$", re.IGNORECASE)
-        
+
         for entry in os.listdir(folder):
             entry_path = os.path.join(folder, entry)
             if os.path.isdir(entry_path):
@@ -249,12 +512,12 @@ def scan_network_folder(data: ScanFolderRequest, db: Session = Depends(get_db)):
                     year = int(year_match.group(2)) if year_match.group(2) else datetime.now().year
                 else:
                     year = datetime.now().year
-                
+
                 existing = db.query(Fair).filter(Fair.name.ilike(fair_name), Fair.year == year).first()
                 if existing:
                     errors.append(f"Fiera già esistente: {fair_name} {year}")
                     continue
-                
+
                 new_fair = Fair(
                     id=str(uuid4()),
                     name=fair_name,
@@ -266,7 +529,7 @@ def scan_network_folder(data: ScanFolderRequest, db: Session = Depends(get_db)):
                 )
                 db.add(new_fair)
                 found_count += 1
-                
+
                 for subfile in os.listdir(entry_path):
                     subpath = os.path.join(entry_path, subfile)
                     if os.path.isfile(subpath):
@@ -279,10 +542,10 @@ def scan_network_folder(data: ScanFolderRequest, db: Session = Depends(get_db)):
                                 "url": subpath,
                                 "type": ext
                             })
-        
+
         db.commit()
         return {"found": found_count, "errors": errors[:10]}
-    
+
     except Exception as e:
         return {"found": found_count, "errors": [str(e)]}
 
@@ -293,7 +556,7 @@ def sync_from_network_folder(db: Session = Depends(get_db)):
     settings = db.query(Settings).first()
     if not settings or not settings.default_network_path:
         raise HTTPException(status_code=400, detail="Nessuna cartella configurata")
-    
+
     folder = settings.default_network_path
     return scan_network_folder(ScanFolderRequest(folder_path=folder), db)
 
@@ -319,6 +582,7 @@ class ExtractPdfRequest(BaseModel):
 @app.post("/api/extract-pdf")
 def extract_pdf_data(data: ExtractPdfRequest, db: Session = Depends(get_db)):
     import os
+
     import fitz
     result = {"target_segments": [], "budget_range": None, "marketing_goals": []}
     pdf_path = data.pdf_path
@@ -388,12 +652,12 @@ def create_fair(fair_data: FairCreate, db: Session = Depends(get_db)):
             name = name.split('.')[0]
 
     year = fair_data.year or datetime.now().year
-    
+
     previous = db.query(Fair).filter(Fair.name.ilike(fair_data.name or name), Fair.year < year).order_by(Fair.year.desc()).first()
     previous_editions = []
     if previous:
         previous_editions = [{"id": previous.id, "year": previous.year, "status": previous.status, "recommendation": previous.recommendation}]
-    
+
     fair = Fair(
         id=fair_id,
         name=fair_data.name or name,
@@ -427,12 +691,61 @@ def create_fair(fair_data: FairCreate, db: Session = Depends(get_db)):
         tiktok=fair_data.tiktok,
         contacts=fair_data.contacts,
         previous_editions=previous_editions,
-        sources=[{"type": "manual", "url": fair_data.fair_url, "date": datetime.now().isoformat()}]
+        sources=[{"type": "manual", "url": fair_data.fair_url, "date": datetime.now().isoformat()}],
+        ai_analysis_enabled="yes" if fair_data.ai_analyze else "no"
     )
+
+    if fair_data.ai_analyze and fair_data.fair_url:
+        settings = get_settings_db(db)
+        try:
+            resp = requests.get(f"{settings.ollama_url}/api/tags", timeout=3)
+            ollama_available = resp.status_code == 200
+        except Exception:
+            ollama_available = False
+
+        if ollama_available and settings.ollama_model:
+            try:
+                scrape_result = scrape_url({"url": fair_data.fair_url, "fair_id": fair_id}, db)
+                if scrape_result.get("ai_data"):
+                    ai_data = scrape_result["ai_data"]
+                    if ai_data.get("name"):
+                        fair.name = ai_data["name"]
+                    if ai_data.get("next_date"):
+                        fair.dates = [ai_data["next_date"]]
+                    if ai_data.get("location"):
+                        fair.location = ai_data["location"]
+                    if ai_data.get("venue"):
+                        fair.venue = ai_data["venue"]
+                    if ai_data.get("organizer"):
+                        fair.organizer = ai_data["organizer"]
+                    if ai_data.get("sector"):
+                        fair.sector = ai_data["sector"]
+                    if ai_data.get("expected_visitors"):
+                        fair.expected_visitors = ai_data["expected_visitors"]
+                    if ai_data.get("exhibitors_count"):
+                        fair.exhibitors_count = ai_data["exhibitors_count"]
+                    if ai_data.get("stand_cost"):
+                        fair.stand_cost = ai_data["stand_cost"]
+                    if ai_data.get("frequency"):
+                        fair.frequency = ai_data["frequency"]
+                    if ai_data.get("summary"):
+                        fair.description = ai_data["summary"]
+                    fair.ai_last_updated = datetime.now().isoformat()
+            except Exception:
+                pass
+
     db.add(fair)
+    db.flush()
+
+    if fair.sector or fair.visitor_profile or fair.target_segments or fair.product_categories:
+        tags = convert_fair_data_to_tags(db, fair)
+        for tag in tags:
+            if tag not in fair.tags:
+                fair.tags.append(tag)
+
     db.commit()
     db.refresh(fair)
-    return {"id": fair.id, "name": fair.name, "url": fair.url, "status": "created"}
+    return {"id": fair.id, "name": fair.name, "url": fair.url, "status": "created", "ai_analyzed": fair_data.ai_analyze}
 
 
 class TagsResponse(BaseModel):
@@ -440,12 +753,27 @@ class TagsResponse(BaseModel):
 
 
 @app.get("/api/tags", response_model=list[dict])
-def list_tags(category: str = None, db: Session = Depends(get_db)):
+def list_tags(category: str = None, category_id: int = None, db: Session = Depends(get_db)):
     query = db.query(Tag)
     if category:
-        query = query.filter(Tag.category == category)
-    tags = query.order_by(Tag.category, Tag.name).all()
-    return [{"id": t.id, "name": t.name, "color": t.color, "category": t.category} for t in tags]
+        # Filter by category name (backward compatibility)
+        query = query.join(TagCategory).filter(TagCategory.name == category)
+    elif category_id:
+        # Filter by category ID
+        query = query.filter(Tag.category_id == category_id)
+
+    tags = query.order_by(Tag.name).all()
+    return [{
+        "id": t.id,
+        "name": t.name,
+        "color": t.color,
+        "category": t.category,  # Backward compatibility property
+        "category_id": t.category_id,
+        "tag_type": t.tag_type,
+        "usage_count": t.usage_count,
+        "ai_confidence": t.ai_confidence,
+        "created_at": t.created_at
+    } for t in tags]
 
 
 @app.post("/api/tags", response_model=dict)
@@ -453,38 +781,83 @@ def create_tag(tag_data: dict, db: Session = Depends(get_db)):
     name = tag_data.get("name", "").strip().lower()
     if not name:
         raise HTTPException(status_code=400, detail="Tag name required")
-    
+
     existing = db.query(Tag).filter(Tag.name == name).first()
     if existing:
-        return {"id": existing.id, "name": existing.name, "color": existing.color, "category": existing.category}
-    
+        return {
+            "id": existing.id,
+            "name": existing.name,
+            "color": existing.color,
+            "category": existing.category,
+            "category_id": existing.category_id,
+            "tag_type": existing.tag_type
+        }
+
+    # Handle category assignment
+    category_id = tag_data.get("category_id")
+    if not category_id and tag_data.get("category"):
+        # Try to find category by name for backward compatibility
+        category = db.query(TagCategory).filter(TagCategory.name == tag_data["category"]).first()
+        category_id = category.id if category else None
+
     tag = Tag(
         name=name,
         color=tag_data.get("color", "#3b82f6"),
-        category=tag_data.get("category"),
+        category_id=category_id,
+        tag_type=tag_data.get("tag_type", "user"),
         created_at=datetime.now().isoformat()
     )
     db.add(tag)
     db.commit()
     db.refresh(tag)
-    return {"id": tag.id, "name": tag.name, "color": tag.color, "category": tag.category}
+    return {
+        "id": tag.id,
+        "name": tag.name,
+        "color": tag.color,
+        "category": tag.category,
+        "category_id": tag.category_id,
+        "tag_type": tag.tag_type
+    }
 
 
 @app.put("/api/tags/{tag_id}", response_model=dict)
 def update_tag(tag_id: int, tag_data: dict, db: Session = Depends(get_db)):
-    tag = db.query(tag).filter(tag.id == tag_id).first()
+    tag = db.query(Tag).filter(Tag.id == tag_id).first()
     if not tag:
         raise HTTPException(status_code=404, detail="Tag not found")
-    
+
     if tag_data.get("name"):
-        tag.name = tag_data["name"].strip().lower()
+        name = tag_data["name"].strip().lower()
+        existing = db.query(Tag).filter(Tag.name == name, Tag.id != tag_id).first()
+        if existing:
+            raise HTTPException(status_code=409, detail="Tag name already exists")
+        tag.name = name
+
     if tag_data.get("color"):
         tag.color = tag_data["color"]
-    if tag_data.get("category"):
-        tag.category = tag_data["category"]
-    
+
+    # Handle category assignment
+    if "category_id" in tag_data:
+        tag.category_id = tag_data["category_id"]
+    elif tag_data.get("category"):
+        # Try to find category by name for backward compatibility
+        category = db.query(TagCategory).filter(TagCategory.name == tag_data["category"]).first()
+        tag.category_id = category.id if category else None
+
+    if tag_data.get("tag_type"):
+        tag.tag_type = tag_data["tag_type"]
+
+    tag.updated_at = datetime.now().isoformat()
+
     db.commit()
-    return {"id": tag.id, "name": tag.name, "color": tag.color, "category": tag.category}
+    return {
+        "id": tag.id,
+        "name": tag.name,
+        "color": tag.color,
+        "category": tag.category,
+        "category_id": tag.category_id,
+        "tag_type": tag.tag_type
+    }
 
 
 @app.delete("/api/tags/{tag_id}")
@@ -492,34 +865,238 @@ def delete_tag(tag_id: int, db: Session = Depends(get_db)):
     tag = db.query(Tag).filter(Tag.id == tag_id).first()
     if not tag:
         raise HTTPException(status_code=404, detail="Tag not found")
-    
+
     db.delete(tag)
     db.commit()
     return {"status": "deleted"}
 
 
+@app.post("/api/tags/merge")
+def merge_tags(data: dict, db: Session = Depends(get_db)):
+    source_tag_id = data.get("source_tag_id")
+    target_tag_id = data.get("target_tag_id")
+
+    if not source_tag_id or not target_tag_id:
+        raise HTTPException(status_code=400, detail="source_tag_id and target_tag_id required")
+
+    if source_tag_id == target_tag_id:
+        raise HTTPException(status_code=400, detail="Cannot merge tag with itself")
+
+    source_tag = db.query(Tag).filter(Tag.id == source_tag_id).first()
+    target_tag = db.query(Tag).filter(Tag.id == target_tag_id).first()
+
+    if not source_tag or not target_tag:
+        raise HTTPException(status_code=404, detail="One or both tags not found")
+
+    from .models import fair_tags as fair_tags_table
+
+    existing_links = db.execute(
+        fair_tags_table.select().where(fair_tags_table.c.tag_id == source_tag_id)
+    ).fetchall()
+
+    for link in existing_links:
+        existing_target = db.execute(
+            fair_tags_table.select().where(
+                fair_tags_table.c.fair_id == link.fair_id,
+                fair_tags_table.c.tag_id == target_tag_id
+            )
+        ).fetchone()
+
+        if not existing_target:
+            db.execute(
+                fair_tags_table.insert().values(fair_id=link.fair_id, tag_id=target_tag_id)
+            )
+
+    db.execute(fair_tags_table.delete().where(fair_tags_table.c.tag_id == source_tag_id))
+
+    db.delete(source_tag)
+    db.commit()
+
+    return {"status": "merged", "source_tag_id": source_tag_id, "target_tag_id": target_tag_id, "target_tag": {"id": target_tag.id, "name": target_tag.name, "color": target_tag.color}}
+
+
 @app.post("/api/tags/bulk")
 def bulk_create_tags(data: dict, db: Session = Depends(get_db)):
     tag_names = data.get("tags", [])
+    category_id = data.get("category_id")  # Optional: assign all tags to this category
     created = []
-    
+
     for name in tag_names:
         name = name.strip().lower()
         if not name:
             continue
-        
+
         existing = db.query(Tag).filter(Tag.name == name).first()
         if existing:
-            created.append({"id": existing.id, "name": existing.name, "color": existing.color})
+            created.append({
+                "id": existing.id,
+                "name": existing.name,
+                "color": existing.color,
+                "category": existing.category,
+                "category_id": existing.category_id
+            })
             continue
-        
-        tag = Tag(name=name, color="#3b82f6", created_at=datetime.now().isoformat())
+
+        tag = Tag(
+            name=name,
+            color="#3b82f6",
+            category_id=category_id,
+            tag_type="user",
+            created_at=datetime.now().isoformat()
+        )
         db.add(tag)
         db.flush()
-        created.append({"id": tag.id, "name": tag.name, "color": tag.color})
-    
+        created.append({
+            "id": tag.id,
+            "name": tag.name,
+            "color": tag.color,
+            "category": tag.category,
+            "category_id": tag.category_id
+        })
+
     db.commit()
     return {"tags": created}
+
+
+# Tag Categories API
+@app.get("/api/tag-categories", response_model=list[dict])
+def list_tag_categories(db: Session = Depends(get_db)):
+    categories = db.query(TagCategory).order_by(TagCategory.name).all()
+    return [{"id": c.id, "name": c.name, "description": c.description, "color": c.color, "icon": c.icon, "parent_id": c.parent_id} for c in categories]
+
+
+@app.post("/api/tag-categories", response_model=dict)
+def create_tag_category(data: dict, db: Session = Depends(get_db)):
+    name = data.get("name", "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Name required")
+
+    existing = db.query(TagCategory).filter(TagCategory.name == name).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Category already exists")
+
+    category = TagCategory(
+        name=name,
+        description=data.get("description"),
+        color=data.get("color", "#3b82f6"),
+        icon=data.get("icon"),
+        parent_id=data.get("parent_id"),
+        created_at=datetime.now().isoformat()
+    )
+    db.add(category)
+    db.commit()
+    db.refresh(category)
+
+    return {"id": category.id, "name": category.name, "description": category.description, "color": category.color, "icon": category.icon, "parent_id": category.parent_id}
+
+
+@app.put("/api/tag-categories/{category_id}", response_model=dict)
+def update_tag_category(category_id: int, data: dict, db: Session = Depends(get_db)):
+    category = db.query(TagCategory).filter(TagCategory.id == category_id).first()
+    if not category:
+        raise HTTPException(status_code=404, detail="Category not found")
+
+    if "name" in data:
+        name = data["name"].strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Name required")
+        existing = db.query(TagCategory).filter(TagCategory.name == name, TagCategory.id != category_id).first()
+        if existing:
+            raise HTTPException(status_code=409, detail="Category name already exists")
+        category.name = name
+
+    if "description" in data:
+        category.description = data["description"]
+    if "color" in data:
+        category.color = data["color"]
+    if "icon" in data:
+        category.icon = data["icon"]
+    if "parent_id" in data:
+        category.parent_id = data["parent_id"]
+
+    db.commit()
+    return {"id": category.id, "name": category.name, "description": category.description, "color": category.color, "icon": category.icon, "parent_id": category.parent_id}
+
+
+@app.delete("/api/tag-categories/{category_id}", response_model=dict)
+def delete_tag_category(category_id: int, reassign_to: int = None, db: Session = Depends(get_db)):
+    category = db.query(TagCategory).filter(TagCategory.id == category_id).first()
+    if not category:
+        raise HTTPException(status_code=404, detail="Category not found")
+
+    # Check if category has children
+    children = db.query(TagCategory).filter(TagCategory.parent_id == category_id).count()
+    if children > 0:
+        raise HTTPException(status_code=400, detail="Cannot delete category with children")
+
+    # Reassign tags if specified
+    if reassign_to:
+        reassign_category = db.query(TagCategory).filter(TagCategory.id == reassign_to).first()
+        if not reassign_category:
+            raise HTTPException(status_code=404, detail="Reassign category not found")
+
+        # Update all tags in this category
+        db.query(Tag).filter(Tag.category_id == category_id).update({"category_id": reassign_to})
+
+    # Delete category
+    db.delete(category)
+    db.commit()
+
+    return {"status": "deleted", "reassigned_to": reassign_to}
+
+
+# Tag Analytics API
+@app.get("/api/tags/analytics", response_model=dict)
+def get_tag_analytics(db: Session = Depends(get_db)):
+    # Get total tags
+    total_tags = db.query(Tag).count()
+
+    # Get categories breakdown
+    categories = db.query(TagCategory.name, TagCategory.id).all()
+    category_counts = {}
+    for cat_name, cat_id in categories:
+        count = db.query(Tag).filter(Tag.category_id == cat_id).count()
+        category_counts[cat_name] = count
+
+    # Get top tags by usage
+    top_tags = db.query(Tag.name, Tag.usage_count).order_by(Tag.usage_count.desc()).limit(10).all()
+    top_tags_list = [{"name": name, "count": count} for name, count in top_tags]
+
+    return {
+        "total_tags": total_tags,
+        "categories": category_counts,
+        "top_tags": top_tags_list
+    }
+
+
+@app.get("/api/tags/{tag_id}/analytics", response_model=dict)
+def get_tag_detailed_analytics(tag_id: int, db: Session = Depends(get_db)):
+    tag = db.query(Tag).filter(Tag.id == tag_id).first()
+    if not tag:
+        raise HTTPException(status_code=404, detail="Tag not found")
+
+    # Get usage statistics
+    total_usage = db.query(TagAnalytics).filter(TagAnalytics.tag_id == tag_id).count()
+    recent_usage = db.query(TagAnalytics).filter(
+        TagAnalytics.tag_id == tag_id,
+        TagAnalytics.timestamp >= (datetime.now() - timedelta(days=30)).isoformat()
+    ).count()
+
+    # Get action breakdown
+    actions = db.query(TagAnalytics.action, db.func.count(TagAnalytics.id)).filter(
+        TagAnalytics.tag_id == tag_id
+    ).group_by(TagAnalytics.action).all()
+
+    action_counts = {action: count for action, count in actions}
+
+    return {
+        "tag_id": tag_id,
+        "tag_name": tag.name,
+        "total_usage": total_usage,
+        "recent_usage": recent_usage,
+        "actions": action_counts,
+        "created_at": tag.created_at
+    }
 
 
 class BulkFairCreate(BaseModel):
@@ -531,7 +1108,7 @@ def create_bulk_fairs(data: BulkFairCreate, db: Session = Depends(get_db)):
     urls = data.urls
     if not urls or not len(urls):
         raise HTTPException(status_code=400, detail="URLs required")
-    
+
     prompt_template = """Analizza questa pagina web di una fiera commerciale e estrai i dati.
 
 URL: {url}
@@ -562,13 +1139,13 @@ Per ogni URL, restituisci un JSON con questa struttura:
 Restituisci SOLO un JSON array con tutti i dati delle fiere trovate."""
 
     prompt = prompt_template + "\n\nURLs da analizzare:\n" + "\n".join([f"- {u}" for u in urls])
-    
+
     from .services.ollama import call_ollama
     ollama_available, ollama_response = call_ollama(prompt)
-    
+
     created_fairs = []
     errors = []
-    
+
     if ollama_available and ollama_response:
         import json
         import re
@@ -576,12 +1153,12 @@ Restituisci SOLO un JSON array con tutti i dati delle fiere trovate."""
             fairs_data = json.loads(ollama_response)
             if not isinstance(fairs_data, list):
                 fairs_data = [fairs_data]
-        except:
+        except Exception:
             match = re.search(r'\[.*\]', ollama_response, re.DOTALL)
             if match:
                 try:
                     fairs_data = json.loads(match.group())
-                except:
+                except Exception:
                     fairs_data = []
             else:
                 errors.append({"error": "Parse failed", "raw": ollama_response[:500]})
@@ -589,7 +1166,7 @@ Restituisci SOLO un JSON array con tutti i dati delle fiere trovate."""
     else:
         errors.append({"error": "Ollama not available"})
         fairs_data = []
-    
+
     for fd in fairs_data:
         try:
             fair_id = str(uuid4())
@@ -621,7 +1198,7 @@ Restituisci SOLO un JSON array con tutti i dati delle fiere trovate."""
             created_fairs.append({"id": fair_id, "name": fair.name})
         except Exception as e:
             errors.append({"error": str(e), "data": fd})
-    
+
     db.commit()
     return {"created": created_fairs, "errors": errors}
 
@@ -632,7 +1209,7 @@ def list_fairs(skip: int = 0, limit: int = 100, show_archived: bool = False, db:
     if not show_archived:
         query = query.filter(Fair.archived != "yes")
     fairs = query.order_by(Fair.id.desc()).offset(skip).limit(limit).all()
-    return [{"id": f.id, "name": f.name or "N/A", "year": f.year, "url": f.url or "", "description": f.description or "", "folder_path": f.folder_path or "", "site_url": f.company_website or "", "linkedin_url": f.company_linkedin or "", "fair_email": f.fair_email or "", "gallery": f.gallery or [], "attachments": f.attachments or [], "contacts": f.contacts or {}, "stand_cost": f.stand_cost or 0, "status": f.status or "in_valutazione", "scraped_data": f.scraped_data, "recommendation": f.recommendation or "", "instagram": f.instagram or "", "facebook": f.facebook or "", "tiktok": f.tiktok or "", "archived": f.archived or "no"} for f in fairs]
+    return [{"id": f.id, "name": f.name or "N/A", "year": f.year, "url": f.url or "", "description": f.description or "", "folder_path": f.folder_path or "", "site_url": f.company_website or "", "linkedin_url": f.company_linkedin or "", "fair_email": f.fair_email or "", "gallery": f.gallery or [], "attachments": f.attachments or [], "contacts": f.contacts or {}, "stand_cost": f.stand_cost or 0, "status": f.status or "in_valutazione", "scraped_data": f.scraped_data, "recommendation": f.recommendation or "", "instagram": f.instagram or "", "facebook": f.facebook or "", "tiktok": f.tiktok or "", "archived": f.archived or "no", "ai_analysis_enabled": f.ai_analysis_enabled or "no", "ai_last_updated": f.ai_last_updated} for f in fairs]
 
 
 @app.get("/api/fairs/{fair_id}", response_model=dict)
@@ -640,7 +1217,7 @@ def get_fair(fair_id: str, db: Session = Depends(get_db)):
     fair = db.query(Fair).filter(Fair.id == fair_id).first()
     if not fair:
         raise HTTPException(status_code=404, detail="Fair not found")
-    return {"id": fair.id, "name": fair.name, "year": fair.year, "duration_days": getattr(fair, 'duration_days', None), "url": fair.url, "description": fair.description or "", "folder_path": fair.folder_path or "", "site_url": fair.company_website, "dates": fair.dates, "location": fair.location, "target_segments": fair.target_segments, "expected_visitors": fair.expected_visitors, "exhibitors_count": fair.exhibitors_count, "tags": [{"id": t.id, "name": t.name, "color": t.color} for t in fair.tags] if fair.tags else [], "sources": fair.sources, "web_sources": fair.web_sources or [], "extraction_regions": fair.extraction_regions or [], "linkedin_url": fair.company_linkedin, "fair_email": fair.fair_email or "", "gallery": fair.gallery or [], "attachments": fair.attachments or [], "contacts": fair.contacts or {}, "stand_cost": fair.stand_cost or 0, "status": fair.status or "in_valutazione", "archived": fair.archived or "no", "scraped_data": fair.scraped_data, "historical_data": fair.historical_data, "ROI_assessment": fair.ROI_assessment, "cost_estimate": fair.cost_estimate, "recommendation": fair.recommendation, "rationale": fair.rationale, "report_pdf_path": fair.report_pdf_path, "report_html_path": fair.report_html_path, "venue": fair.venue, "address": fair.address, "sector": fair.sector, "frequency": fair.frequency, "edition": fair.edition, "organizer": fair.organizer, "exhibitor_countries": fair.exhibitor_countries, "visitor_profile": fair.visitor_profile, "product_categories": fair.product_categories, "key_features": fair.key_features, "instagram": fair.instagram or "", "facebook": fair.facebook or "", "tiktok": fair.tiktok or ""}
+    return {"id": fair.id, "name": fair.name, "year": fair.year, "duration_days": getattr(fair, 'duration_days', None), "url": fair.url, "description": fair.description or "", "folder_path": fair.folder_path or "", "site_url": fair.company_website, "dates": fair.dates, "location": fair.location, "target_segments": fair.target_segments, "expected_visitors": fair.expected_visitors, "exhibitors_count": fair.exhibitors_count, "tags": [{"id": t.id, "name": t.name, "color": t.color} for t in fair.tags] if fair.tags else [], "sources": fair.sources, "web_sources": fair.web_sources or [], "extraction_regions": fair.extraction_regions or [], "linkedin_url": fair.company_linkedin, "fair_email": fair.fair_email or "", "gallery": fair.gallery or [], "attachments": fair.attachments or [], "contacts": fair.contacts or {}, "stand_cost": fair.stand_cost or 0, "status": fair.status or "in_valutazione", "archived": fair.archived or "no", "scraped_data": fair.scraped_data, "historical_data": fair.historical_data, "ROI_assessment": fair.ROI_assessment, "cost_estimate": fair.cost_estimate, "recommendation": fair.recommendation, "rationale": fair.rationale, "report_pdf_path": fair.report_pdf_path, "report_html_path": fair.report_html_path, "venue": fair.venue, "address": fair.address, "sector": fair.sector, "frequency": fair.frequency, "edition": fair.edition, "organizer": fair.organizer, "exhibitor_countries": fair.exhibitor_countries, "visitor_profile": fair.visitor_profile, "product_categories": fair.product_categories, "key_features": fair.key_features, "instagram": fair.instagram or "", "facebook": fair.facebook or "", "tiktok": fair.tiktok or "", "ai_analysis_enabled": fair.ai_analysis_enabled or "no", "ai_last_updated": fair.ai_last_updated}
 
 
 @app.put("/api/fairs/{fair_id}", response_model=dict)
@@ -648,12 +1225,62 @@ def update_fair(fair_id: str, fair_data: FairUpdate, db: Session = Depends(get_d
     fair = db.query(Fair).filter(Fair.id == fair_id).first()
     if not fair:
         raise HTTPException(status_code=404, detail="Fair not found")
-    update_data = fair_data.model_dump(exclude_unset=True)
+
+    ai_analyze = fair_data.ai_analyze
+    update_data = fair_data.model_dump(exclude_unset=True, exclude={'ai_analyze'})
+
     for key, value in update_data.items():
         setattr(fair, key, value)
+
+    if ai_analyze and fair.url:
+        settings = get_settings_db(db)
+        try:
+            resp = requests.get(f"{settings.ollama_url}/api/tags", timeout=3)
+            ollama_available = resp.status_code == 200
+        except Exception:
+            ollama_available = False
+
+        if ollama_available and settings.ollama_model:
+            try:
+                scrape_result = scrape_url({"url": fair.url, "fair_id": fair_id}, db)
+                if scrape_result.get("ai_data"):
+                    ai_data = scrape_result["ai_data"]
+                    if ai_data.get("name"):
+                        fair.name = ai_data["name"]
+                    if ai_data.get("next_date"):
+                        fair.dates = [ai_data["next_date"]]
+                    if ai_data.get("location"):
+                        fair.location = ai_data["location"]
+                    if ai_data.get("venue"):
+                        fair.venue = ai_data["venue"]
+                    if ai_data.get("organizer"):
+                        fair.organizer = ai_data["organizer"]
+                    if ai_data.get("sector"):
+                        fair.sector = ai_data["sector"]
+                    if ai_data.get("expected_visitors"):
+                        fair.expected_visitors = ai_data["expected_visitors"]
+                    if ai_data.get("exhibitors_count"):
+                        fair.exhibitors_count = ai_data["exhibitors_count"]
+                    if ai_data.get("stand_cost"):
+                        fair.stand_cost = ai_data["stand_cost"]
+                    if ai_data.get("frequency"):
+                        fair.frequency = ai_data["frequency"]
+                    if ai_data.get("summary"):
+                        fair.description = ai_data["summary"]
+                    fair.ai_analysis_enabled = "yes"
+                    fair.ai_last_updated = datetime.now().isoformat()
+            except Exception:
+                pass
+
+    if fair.sector or fair.visitor_profile or fair.target_segments or fair.product_categories:
+        tags = convert_fair_data_to_tags(db, fair)
+        for tag in tags:
+            if tag not in fair.tags:
+                fair.tags.append(tag)
+
     db.commit()
     db.refresh(fair)
-    return {"id": fair.id, "status": "updated"}
+    return {"id": fair.id, "status": "updated", "ai_analyzed": ai_analyze}
 
 
 @app.post("/api/fairs/{fair_id}/attachments")
@@ -661,59 +1288,59 @@ async def upload_fair_attachments(fair_id: str, files: list[UploadFile] = File(.
     fair = db.query(Fair).filter(Fair.id == fair_id).first()
     if not fair:
         raise HTTPException(status_code=404, detail="Fair not found")
-    
-    UPLOAD_DIR = Path("./data/uploads")
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    
+
+    upload_dir = Path("./data/uploads")
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
     attachments = fair.attachments or []
-    
+
     for file in files:
         file_id = str(uuid4())
         file_ext = Path(file.filename).suffix
         local_path = UPLOAD_DIR / f"{file_id}{file_ext}"
-        
+
         contents = await file.read()
         with open(local_path, "wb") as f:
             f.write(contents)
-        
+
         attachments.append({
             "file_id": file_id,
             "filename": file.filename,
             "file_path": str(local_path),
             "uploaded_at": datetime.now().isoformat()
         })
-    
+
     fair.attachments = attachments
     db.commit()
-    
+
     return {"status": "uploaded", "count": len(files)}
 
 
 def extract_local_fair_data(title_tag, meta_desc, h1_texts, h2_texts, all_text, emails, phones, future_dates, venue_candidates) -> dict:
     """Algoritmo locale per estrarre dati della fiera senza AI."""
     data = {"name": "", "next_date": "", "organizer": "", "sector": "", "venue": "", "location": "", "email": "", "phone": "", "expected_visitors": 0, "exhibitors_count": 0, "stand_cost": 0, "frequency": "", "summary": ""}
-    
+
     if title_tag:
         data["name"] = title_tag.text.strip() if title_tag else ""
-    
+
     if h1_texts and len(h1_texts) > 0:
         if not data["name"] or data["name"] == title_tag.text.strip() if title_tag else "":
             data["name"] = h1_texts[0]
-    
+
     if future_dates and len(future_dates) > 0:
         data["next_date"] = future_dates[0]
-    
+
     if venue_candidates and len(venue_candidates) > 0:
         data["location"] = venue_candidates[0]
-    
+
     if emails and len(emails) > 0:
         data["email"] = emails[0]
-    
+
     if phones and len(phones) > 0:
         data["phone"] = phones[0]
-    
+
     text_lower = all_text.lower()
-    
+
     sectors = {
         "food": ["food", "cibo", "alimentation", "gastronomia", "agricoltura"],
         "tech": ["tech", "technology", "digital", "ict", "software", "innovation"],
@@ -732,26 +1359,26 @@ def extract_local_fair_data(title_tag, meta_desc, h1_texts, h2_texts, all_text, 
                 break
         if data["sector"]:
             break
-    
+
     freq_map = {"annuale": "annuale", "annual": "annuale", "biennale": "biennale", "biennial": "biennale", "triennale": "triennale", "triennial": "triennale"}
     for freq, kw in freq_map.items():
         if freq in text_lower:
             data["frequency"] = kw
             break
-    
+
     import re
     visitors_match = re.search(r"(\d{1,3}(?:[\.\s]\d{3})*)\s*(?:visitatori|visitors|affluenza|visitatori_previsti)", all_text, re.IGNORECASE)
     if visitors_match:
         data["expected_visitors"] = int(visitors_match.group(1).replace(".", "").replace(" ", ""))
-    
+
     exhibitors_match = re.search(r"(\d{1,3}(?:[\.\s]\d{3})*)\s*(?:espositori|exhibitors|stand)", all_text, re.IGNORECASE)
     if exhibitors_match:
         data["exhibitors_count"] = int(exhibitors_match.group(1).replace(".", "").replace(" ", ""))
-    
+
     cost_match = re.search(r"(\d{1,3}(?:[\.\s]\d{3})*)\s*(?:€|euro)", all_text, re.IGNORECASE)
     if cost_match:
         data["stand_cost"] = int(cost_match.group(1).replace(".", "").replace(" ", ""))
-    
+
     org_patterns = [
         r"organizzato\s+da\s+([A-Za-z][A-Za-z\s]{2,40})",
         r"organizer[:\s]+([A-Za-z][A-Za-z\s]{2,40})",
@@ -762,7 +1389,7 @@ def extract_local_fair_data(title_tag, meta_desc, h1_texts, h2_texts, all_text, 
         if match:
             data["organizer"] = match.group(1).strip()[:50]
             break
-    
+
     venue_patterns = [
         r"(?:fiera|centro\s+fieristico|quartiere)\s+([A-Za-z][A-Za-z\s]{2,40})",
         r"venue[:\s]+([A-Za-z][A-Za-z\s]{2,40})",
@@ -772,12 +1399,12 @@ def extract_local_fair_data(title_tag, meta_desc, h1_texts, h2_texts, all_text, 
         if match:
             data["venue"] = match.group(1).strip()[:50]
             break
-    
+
     if meta_desc:
         desc = meta_desc.get("content", "")[:500]
         if desc:
             data["summary"] = f"Fiera: {data['name'] or 'N/A'}. {desc[:300]} Location: {data['location'] or 'N/A'}. Settore: {data['sector'] or 'N/A'}."
-    
+
     if not data["summary"] or len(data["summary"]) < 50:
         summary_parts = []
         if data["name"]:
@@ -795,7 +1422,7 @@ def extract_local_fair_data(title_tag, meta_desc, h1_texts, h2_texts, all_text, 
         data["summary"] = ". ".join(summary_parts)
         if data["location"] or data["sector"]:
             data["summary"] += ". Per valutare la partecipazione analizzare costi e benefici."
-    
+
     return data
 
 
@@ -977,12 +1604,12 @@ async def upload_proposal(fair_id: str, file: UploadFile = File(...), db: Sessio
     fair = db.query(Fair).filter(Fair.id == fair_id).first()
     if not fair:
         raise HTTPException(status_code=404, detail="Fair not found")
-    
+
     file_id = str(uuid4())
     file_path = PROPOSALS_DIR / f"{file_id}_{file.filename}"
     with open(file_path, "wb") as f:
         f.write(await file.read())
-    
+
     proposal = CommercialProposal(
         fair_id=fair_id,
         name=file.filename,
@@ -990,22 +1617,22 @@ async def upload_proposal(fair_id: str, file: UploadFile = File(...), db: Sessio
         file_name=file.filename,
         received_at=datetime.now().isoformat()
     )
-    
+
     try:
         import fitz
         doc = fitz.open(file_path)
         text = "\n".join([page.get_text() for page in doc])
         doc.close()
-        
+
         import re
         amount_match = re.search(r"(?:€|euro|EUR)\s*(\d{1,3}(?:[.,]\d{3})*)", text, re.IGNORECASE)
         if amount_match:
             proposal.total_amount = float(amount_match.group(1).replace(".", "").replace(",", "."))
-        
+
         stand_match = re.search(r"(\d+)\s*(?:mq|m2|metri quadri)", text, re.IGNORECASE)
         if stand_match:
             proposal.stand_size = int(stand_match.group(1))
-        
+
         location_kws = ["angolo", "centro", "ingresso", "padiglione", "hall"]
         for kw in location_kws:
             if kw in text.lower():
@@ -1013,7 +1640,7 @@ async def upload_proposal(fair_id: str, file: UploadFile = File(...), db: Sessio
                 break
     except Exception:
         pass
-    
+
     db.add(proposal)
     db.commit()
     db.refresh(proposal)
@@ -1132,23 +1759,17 @@ def scrape_url(url_data: dict, db: Session = Depends(get_db)):
         h1_texts = [h.get_text(strip=True) for h in soup.find_all("h1")]
         h2_texts = [h.get_text(strip=True) for h in soup.find_all("h2")]
         h3_texts = [h.get_text(strip=True) for h in soup.find_all("h3")]
-        
+
         structured_text = "\n".join([
             "TITOLI H1: " + " | ".join(h1_texts[:5]),
             "TITOLI H2: " + " | ".join(h2_texts[:10]),
             "TITOLI H3: " + " | ".join(h3_texts[:15]),
         ])
 
-        contact_patterns = [
-            r"[\w\.-]+@[\w\.-]+\.\w+",
-            r"\+?\d{1,3}[-.\s]?\(?\d{1,4}\)?[-.\s]?\d{1,4}[-.\s]?\d{1,9}",
-            r"tel[:\s]*(\+?[\d\s\-\(\)]+)",
-            r"phone[:\s]*(\+?[\d\s\-\(\)]+)",
-        ]
         all_text = soup.get_text(separator=" ", strip=True)
         emails = list(set(re.findall(r"[\w\.-]+@[\w\.-]+\.\w+", all_text)))
         phones = list(set(re.findall(r"\+?\d{1,3}[-.\s]?\(?\d{1,4}\)?[-.\s]?\d{1,4}[-.\s]?\d{1,9}", all_text)))
-        
+
         contact_info = []
         if emails:
             contact_info.append("Email: " + ", ".join(emails[:5]))
@@ -1171,7 +1792,7 @@ def scrape_url(url_data: dict, db: Session = Depends(get_db)):
                     year = int(year_match.group())
                     if year >= current_year:
                         all_dates.append(m)
-        
+
         future_dates = list(set(all_dates))[:10]
 
         venue_cities = ["milano", "roma", "torino", "bologna", "firenze", "napoli", "genova", "verona", "padova", "vicenza", "bari", "catania", "rimini", "modena", "pesaro"]
@@ -1183,7 +1804,7 @@ def scrape_url(url_data: dict, db: Session = Depends(get_db)):
         for pat in venue_patterns:
             matches = re.findall(pat, all_text, re.IGNORECASE)
             venues_found.extend([m.strip()[:50] for m in matches])
-        
+
         venue_candidates = []
         text_lower = all_text.lower()
         for city in venue_cities:
@@ -1221,14 +1842,14 @@ ALLEGATI (estratti da PDF/documenti):
         settings = db.query(Settings).first()
         use_ai = settings and settings.ollama_model
         ollama_available = False
-        
+
         if use_ai:
             try:
                 test_resp = requests.get(f"{settings.ollama_url}/api/tags", timeout=2)
                 ollama_available = test_resp.status_code == 200
             except Exception:
                 pass
-        
+
         if use_ai and ollama_available:
             log("OLLAMA", f"Analisi con Ollama: {settings.ollama_model}")
             try:
@@ -1244,7 +1865,7 @@ Istruzioni:
 2. In caso di discrepanze, usa i dati più recenti/aggiornati (gli allegati hanno priorità per dati ufficiali)
 3. Estrai il NOME UFFICIALE della fiera
 4. Identifica la PROSSIMA DATA della fiera (la più vicina nel futuro)
-5. Trova l'ORGANIZZATORE della fiera  
+5. Trova l'ORGANIZZATORE della fiera
 6. Identifica il SETTORE merceologico principale
 7. Trova il LUOGO/VENUE dove si tiene
 8. Estrai tutti i DATI DI CONTATTO (email, telefono, indirizzo)
@@ -1280,11 +1901,11 @@ Rispondi SOLO con JSON valido, niente altro testo."""
                         import json as json_lib
                         ai_data = json_lib.loads(match.group())
                         result["ai_data"] = ai_data
-                        
+
                         for k, v in ai_data.items():
                             if v:
                                 log("AI", f"{k}: {str(v)[:50]}")
-                        
+
                         if ai_data.get("summary"):
                             result["summary"] = ai_data["summary"]
                             log("SUMMARY", f"Riassunto generato: {len(ai_data['summary'])} parole")
@@ -1324,24 +1945,24 @@ def analyze_fair(fair_id: str, background_tasks: BackgroundTasks, db: Session = 
 
     broadcast_notification(f"Avvio analisi per {fair.name}...", "info", fair_id)
     background_tasks.add_task(run_analyze_fair, fair_id)
-    
+
     return {"status": "started", "fair_id": fair_id, "message": "Analisi avviata in background"}
 
 
 async def run_analyze_fair(fair_id: str):
     from .db import SessionLocal
     from .models import Fair
-    
+
     db = SessionLocal()
     try:
         fair = db.query(Fair).filter(Fair.id == fair_id).first()
         if not fair:
             broadcast_notification("Fiera non trovata", "error", fair_id)
             return
-        
+
         attachments = fair.attachments or []
         attachments_text = ""
-        
+
         if attachments:
             all_text = []
             for att in attachments:
@@ -1365,15 +1986,15 @@ async def run_analyze_fair(fair_id: str):
                     except Exception as e:
                         broadcast_notification(f"Errore: {str(e)}", "warning", fair_id)
             attachments_text = "\n\n".join(all_text)[:5000]
-        
+
         fair.scraped_data = {
             "analyzed_at": datetime.now().isoformat(),
             "attachments_text": attachments_text[:500] if attachments_text else None
         }
         db.commit()
-        
+
         broadcast_notification(f"Analisi completata per {fair.name}", "success", fair_id)
-        
+
     except Exception as e:
         broadcast_notification(f"Errore analisi: {str(e)}", "error", fair_id)
     finally:
@@ -1381,52 +2002,7 @@ async def run_analyze_fair(fair_id: str):
 
 
 def analyze_fair_task(fair_id: str):
-    from .db import SessionLocal
-    from .models import Fair, Settings
-    from .services.ollama import OllamaClient
-    import requests
-    from bs4 import BeautifulSoup
-    from datetime import datetime
-
-    db = SessionLocal()
-    try:
-        fair = db.query(Fair).filter(Fair.id == fair_id).first()
-        if not fair:
-            return
-
-        settings = db.query(Settings).first()
-        if not settings:
-            settings = Settings()
-
-        scraped_data = {}
-        url_to_check = fair.url or fair.company_website or ""
-        if url_to_check:
-            try:
-                resp = requests.get(url_to_check, timeout=15, verify=False, headers={
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                    'Accept-Language': 'en-US,en;q=0.9,it-IT;q=0.8,it;q=0.7'
-                })
-                if resp.status_code == 200:
-                    soup = BeautifulSoup(resp.text, "html.parser")
-                    scraped_data['title'] = soup.find('title').text.strip() if soup.find('title') else ''
-                    scraped_data['source_url'] = url_to_check
-                    scraped_data['scraped_at'] = datetime.now().isoformat()
-            except Exception as e:
-                scraped_data['error'] = str(e)
-
-        scraped_data['final_data'] = {}
-        scraped_data['extracted_at'] = datetime.now().isoformat()
-
-        fair.scraped_data = scraped_data
-        if not fair.recommendation:
-            fair.status = "in_valutazione"
-        db.commit()
-
-    except Exception:
-        pass
-    finally:
-        db.close()
+    return asyncio.run(run_analyze_fair(fair_id))
 
 
 @app.post("/api/fairs/{fair_id}/evaluate")
@@ -1479,8 +2055,8 @@ Reply ONLY in JSON format:
 
             ai_response = client.chat(model_name, prompt)
             if ai_response:
-                import re
                 import json
+                import re
                 match = re.search(r'\{[^}]+\}', ai_response, re.DOTALL)
                 if match:
                     result = json.loads(match.group())
@@ -1505,8 +2081,9 @@ class ReportFormat(BaseModel):
     format: str = "html"
 
 
-@app.get("/api/fairs/{fair_id}/report")
-def generate_report(fair_id: str, format: str = "html", db: Session = Depends(get_db)):
+@app.post("/api/fairs/{fair_id}/report")
+@app.post("/fairs/{fair_id}/report")
+def generate_report(fair_id: str, report_format: ReportFormat = Body(...), db: Session = Depends(get_db)):
     fair = db.query(Fair).filter(Fair.id == fair_id).first()
     if not fair:
         raise HTTPException(status_code=404, detail="Fair not found")
@@ -1520,7 +2097,8 @@ def generate_report(fair_id: str, format: str = "html", db: Session = Depends(ge
         f.write(html_content)
     fair.report_html_path = str(html_path)
     pdf_path = None
-    if fmt.format.lower() == 'pdf':
+    format_value = report_format.format
+    if format_value.lower() == 'pdf':
         try:
             from weasyprint import HTML
             pdf_path = str(REPORTS_DIR / f"report_{fair_id}.pdf")
@@ -1530,6 +2108,18 @@ def generate_report(fair_id: str, format: str = "html", db: Session = Depends(ge
             pass
     db.commit()
     return {"html": str(html_path), "pdf": pdf_path}
+
+
+@app.get("/fairs/{fair_id}/report", response_class=HTMLResponse)
+def view_report_card(fair_id: str, db: Session = Depends(get_db)):
+    fair = db.query(Fair).filter(Fair.id == fair_id).first()
+    if not fair:
+        raise HTTPException(status_code=404, detail="Fair not found")
+    settings = get_settings_db(db)
+    from jinja2 import Environment, FileSystemLoader
+    env = Environment(loader=FileSystemLoader(str(TEMPLATE_DIR)))
+    template = env.get_template("report_card.html")
+    return HTMLResponse(template.render(fair=fair, settings=settings, nav_active="fairs"))
 
 
 @app.get("/api/fairs/{fair_id}/report/download")
@@ -1566,7 +2156,7 @@ def add_web_source(fair_id: str, web_source: WebSourceInput, db: Session = Depen
     fair = db.query(Fair).filter(Fair.id == fair_id).first()
     if not fair:
         raise HTTPException(status_code=404, detail="Fair not found")
-    
+
     sources = fair.web_sources or []
     source_entry = {
         "url": web_source.url,
@@ -1577,7 +2167,7 @@ def add_web_source(fair_id: str, web_source: WebSourceInput, db: Session = Depen
     sources.append(source_entry)
     fair.web_sources = sources
     db.commit()
-    
+
     return {"sources": sources}
 
 
@@ -1586,10 +2176,10 @@ def update_web_sources(fair_id: str, update: WebSourceUpdate, db: Session = Depe
     fair = db.query(Fair).filter(Fair.id == fair_id).first()
     if not fair:
         raise HTTPException(status_code=404, detail="Fair not found")
-    
+
     fair.web_sources = update.sources
     db.commit()
-    
+
     return {"fair_id": fair_id, "sources": fair.web_sources or []}
 
 
@@ -1598,15 +2188,15 @@ def capture_screenshots_fallback(fair_id: str, url_idx: int, db: Session = Depen
     fair = db.query(Fair).filter(Fair.id == fair_id).first()
     if not fair:
         raise HTTPException(status_code=404, detail="Fair not found")
-    
+
     sources = fair.web_sources or []
     if url_idx < 0 or url_idx >= len(sources):
         raise HTTPException(status_code=400, detail="Invalid URL index")
-    
+
     url = sources[url_idx].get("url", "")
     if not url:
         raise HTTPException(status_code=400, detail="URL not found")
-    
+
     return {"status": "skipped", "message": "Screenshot disabled - install playwright browsers manually"}
 
 
@@ -1616,21 +2206,22 @@ def capture_screenshots(fair_id: str, url_idx: int, db: Session = Depends(get_db
     fair = db.query(Fair).filter(Fair.id == fair_id).first()
     if not fair:
         raise HTTPException(status_code=404, detail="Fair not found")
-    
+
     sources = fair.web_sources or []
     if url_idx < 0 or url_idx >= len(sources):
         raise HTTPException(status_code=400, detail="Invalid URL index")
-    
+
     url = sources[url_idx].get("url", "")
     if not url:
         raise HTTPException(status_code=400, detail="URL not found")
-    
+
     screenshot_path = SCREENSHOTS_DIR / f"{fair_id}_{url_idx}.png"
-    
+
     try:
         import asyncio
+
         from playwright.async_api import async_playwright
-        
+
         async def take_screenshot():
             async with async_playwright() as p:
                 browser = await p.chromium.launch()
@@ -1638,14 +2229,14 @@ def capture_screenshots(fair_id: str, url_idx: int, db: Session = Depends(get_db
                 await page.goto(url, timeout=15000)
                 await page.screenshot(path=str(screenshot_path), full_page=True)
                 await browser.close()
-        
+
         asyncio.run(take_screenshot())
         sources[url_idx]["screenshot"] = str(screenshot_path)
         fair.web_sources = sources
         db.commit()
     except Exception as e:
         return {"error": str(e), "screenshot": None, "status": "error"}
-    
+
     return {"url_idx": url_idx, "screenshot": str(screenshot_path)}
 
 
@@ -1654,29 +2245,30 @@ async def upload_screenshot(fair_id: str, url_idx: int, file: UploadFile = File(
     fair = db.query(Fair).filter(Fair.id == fair_id).first()
     if not fair:
         raise HTTPException(status_code=404, detail="Fair not found")
-    
+
     sources = fair.web_sources or []
     if url_idx < 0 or url_idx >= len(sources):
         raise HTTPException(status_code=400, detail="Invalid URL index")
-    
+
     SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
     screenshot_path = SCREENSHOTS_DIR / f"{fair_id}_{url_idx}_{file.filename}"
-    
+
     contents = await file.read()
     with open(screenshot_path, "wb") as f:
         f.write(contents)
-    
+
     sources[url_idx]["screenshot"] = str(screenshot_path)
     fair.web_sources = sources
     db.commit()
-    
+
     return {"url_idx": url_idx, "screenshot": str(screenshot_path)}
 
 
 @app.post("/api/import-excel-upload")
 async def import_excel_upload(file: UploadFile = File(...), db: Session = Depends(get_db)):
-    import openpyxl
     import io
+
+    import openpyxl
     try:
         content = await file.read()
         wb = openpyxl.load_workbook(io.BytesIO(content))
@@ -1764,34 +2356,68 @@ def clear_database(db: Session = Depends(get_db)):
 
 @app.get("/api/db/stats")
 def get_database_stats(db: Session = Depends(get_db)):
-    total = db.query(Fair).count()
-    in_valutazione = db.query(Fair).filter(Fair.status == "in_valutazione").count()
-    approvata = db.query(Fair).filter(Fair.status == "approvata").count()
-    in_gestione = db.query(Fair).filter(Fair.status == "in_gestione").count()
-    conclusa = db.query(Fair).filter(Fair.status == "conclusa").count()
-    rifiutata = db.query(Fair).filter(Fair.status == "rifiutata").count()
+    # Totale fiere (non archiviate)
+    total_fairs = db.query(Fair).filter(Fair.archived != "yes").count()
 
-    fairs = db.query(Fair).all()
-    total_contacts = {"cold": 0, "warm": 0, "hot": 0}
-    total_stand_cost = 0
+    # Fiere attive (in gestione)
+    active_fairs = db.query(Fair).filter(Fair.status == "in_gestione", Fair.archived != "yes").count()
 
-    for fair in fairs:
-        if fair.contacts:
-            total_contacts["cold"] += fair.contacts.get("cold", 0)
-            total_contacts["warm"] += fair.contacts.get("warm", 0)
-            total_contacts["hot"] += fair.contacts.get("hot", 0)
-        if fair.stand_cost:
-            total_stand_cost += fair.stand_cost
+    # Budget totale (fiere approvate, in gestione, concluse)
+    budget_total = db.query(func.sum(Fair.stand_cost)).filter(
+        Fair.status.in_(["approvata", "in_gestione", "conclusa"]),
+        Fair.archived != "yes"
+    ).scalar() or 0
+
+    # ROI medio (calcolato da roi_assessment)
+    roi_scores = []
+    fairs_with_roi = db.query(Fair).filter(
+        Fair.roi_assessment.isnot(None),
+        Fair.archived != "yes"
+    ).all()
+
+    for fair in fairs_with_roi:
+        if fair.roi_assessment and "assessment" in fair.roi_assessment:
+            assessment = fair.roi_assessment["assessment"]
+            if assessment == "high":
+                roi_scores.append(3)
+            elif assessment == "medium":
+                roi_scores.append(2)
+            else:
+                roi_scores.append(1)
+
+    avg_roi = sum(roi_scores) / len(roi_scores) if roi_scores else 0
+
+    # Distribuzione stati per grafico
+    status_counts = {}
+    for status in ["in_valutazione", "approvata", "in_gestione", "conclusa", "rifiutata"]:
+        count = db.query(Fair).filter(Fair.status == status, Fair.archived != "yes").count()
+        status_counts[status] = count
+
+    # Trend mensile (ultimi 12 mesi)
+    monthly_trend = []
+    current_date = datetime.now()
+    for i in range(11, -1, -1):
+        month_start = (current_date - relativedelta(months=i)).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        month_end = (month_start + relativedelta(months=1)) - timedelta(seconds=1)
+
+        count = db.query(Fair).filter(
+            Fair.created_at >= month_start,
+            Fair.created_at <= month_end,
+            Fair.archived != "yes"
+        ).count()
+
+        monthly_trend.append({
+            "month": month_start.strftime("%Y-%m"),
+            "count": count
+        })
 
     return {
-        "total": total,
-        "in_valutazione": in_valutazione,
-        "approvata": approvata,
-        "in_gestione": in_gestione,
-        "conclusa": conclusa,
-        "rifiutata": rifiutata,
-        "contacts": total_contacts,
-        "total_stand_cost": total_stand_cost
+        "total_fairs": total_fairs,
+        "active_fairs": active_fairs,
+        "budget_total": float(budget_total),
+        "avg_roi": round(avg_roi, 1) if avg_roi > 0 else 0,
+        "status_distribution": status_counts,
+        "monthly_trend": monthly_trend
     }
 
 
@@ -1846,7 +2472,7 @@ TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
 def render_template(template_name: str, **kwargs) -> str:
     template_path = TEMPLATE_DIR / template_name
     if template_path.exists():
-        with open(template_path, "r", encoding="utf-8") as f:
+        with open(template_path, encoding="utf-8") as f:
             return f.read()
     return f"<h1>Template {template_name} not found</h1>"
 
@@ -1924,33 +2550,34 @@ def tags_page():
 
 @app.post("/api/fairs/{fair_id}/tags")
 def update_fair_tags(fair_id: str, data: dict, db: Session = Depends(get_db)):
-    from .models import Tag, fair_tags as FairTagsTable
+    from .models import fair_tags as fair_tags_table
     fair = db.query(Fair).filter(Fair.id == fair_id).first()
     if not fair:
         raise HTTPException(status_code=404, detail="Fair not found")
-    
+
     tag_ids = data.get("tag_ids", [])
-    
-    db.execute(FairTagsTable.delete().where(FairTagsTable.c.fair_id == fair_id))
-    
+
+    db.execute(fair_tags_table.delete().where(fair_tags_table.c.fair_id == fair_id))
+
     for tag_id in tag_ids:
-        db.execute(FairTagsTable.insert().values(fair_id=fair_id, tag_id=tag_id))
-    
+        db.execute(fair_tags_table.insert().values(fair_id=fair_id, tag_id=tag_id))
+
     db.commit()
-    
+
     return {"status": "updated", "tag_ids": tag_ids}
 
 
 @app.get("/api/fairs/{fair_id}/tags", response_model=list[dict])
 def get_fair_tags(fair_id: str, db: Session = Depends(get_db)):
-    from .models import Tag, fair_tags as FairTagsTable
+    from .models import Tag
+    from .models import fair_tags as fair_tags_table
     fair = db.query(Fair).filter(Fair.id == fair_id).first()
     if not fair:
         raise HTTPException(status_code=404, detail="Fair not found")
-    
-    stmt = FairTagsTable.select().where(FairTagsTable.c.fair_id == fair_id)
+
+    stmt = fair_tags_table.select().where(fair_tags_table.c.fair_id == fair_id)
     tag_ids = [row[1] for row in db.execute(stmt).fetchall()]
-    
+
     tags = db.query(Tag).filter(Tag.id.in_(tag_ids)).all() if tag_ids else []
     return [{"id": t.id, "name": t.name, "color": t.color, "category": t.category} for t in tags]
 

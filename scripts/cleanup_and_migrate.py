@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import os
 import shutil
 from pathlib import Path
 
@@ -20,7 +19,8 @@ def migrate_one(src_dir: Path, dst: Path):
     if not dst.exists():
         dst.mkdir(parents=True, exist_ok=True)
     for item in src_dir.iterdir():
-        if item.name.startswith('.'): continue
+        if item.name.startswith('.'):
+            continue
         target = dst / item.name
         if item.is_dir():
             migrate_one(item, target)

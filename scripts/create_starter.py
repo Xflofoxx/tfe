@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-import sys
 import shutil
+import sys
 from pathlib import Path
+
 
 def main(dest_dir):
     repo_root = Path(__file__).resolve().parent.parent

@@ -1,4 +1,5 @@
 import os
+
 os.environ["TESTING"] = "true"
 
 from src.fair_evaluator.models import Fair

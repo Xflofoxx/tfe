@@ -1,9 +1,7 @@
 import subprocess
-import tempfile
-from pathlib import Path
 
 import requests
-from bs4 import BeautifulSoup as _BS
+from bs4 import BeautifulSoup
 
 PDF_EXTS = {".pdf", ".PDF"}
 
@@ -70,7 +68,7 @@ def extract_text_from_url(url: str) -> str:
 
 def extract_text_from_html(html: str) -> str:
     """Clean HTML and extract text content."""
-    soup = _BS(html, "html.parser")
+    soup = BeautifulSoup(html, "html.parser")
     for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
         tag.decompose()
     for tag in soup.find_all("noscript"):

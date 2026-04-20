@@ -8,3 +8,5 @@ ignore = ["E501"]
 [format]
 quote-style = "double"
 indent-style = "space"
+
+exclude = ["venv/", "data/", ".git/", "__pycache__/"]
