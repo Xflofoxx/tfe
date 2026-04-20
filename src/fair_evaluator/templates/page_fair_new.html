@@ -260,7 +260,7 @@
         return;
       }
       
-      const prompt = `Sei un esperto di fiere commerciali. Analizza questa pagina web e estrai i dati della fiera.
+      const prompt = `Sei un esperto di fiere commerciali GALEELEO. Analizza questa pagina web e estrai i dati della fiera.
 
 URL: ${url}
 
@@ -276,18 +276,24 @@ Per favore estrai e restituisci SOLO un JSON con questa struttura:
   "address": "indirizzo completo",
   "organizers": ["lista organizzatori/enti organizzatori"],
   "organizer": "organizzatore principale",
-  "sector": "settore merceologico",
+  "sector_tag": "settore merceologico (es: Alimentare, Tech, Automotive)",
+  "visitor_profile_tag": "profilo visitatori (es: CTO, CEO, Installatori)",
+  "product_category_tags": ["categorie prodotto"],
   "frequency": "annuale|biennale|triennale",
   "edition": "numero edizione corrente (es. 42^)",
   "expected_visitors": numero,
   "exhibitors_count": numero,
   "stand_cost": costo medio stand,
   "exhibitor_countries": ["paesi"],
-  "visitor_profile": "profilo visitatori",
+  "visitor_profile": "profilo visitatori (descrizione)",
   "target_segments": ["B2B","B2C","Trade"],
-  "product_categories": ["categorie"],
   "key_features": ["features"]
 }
+
+IMPORTANT: Usa tag specifici e descrittivi:
+- sector_tag: settore principale (es: "Alimentare", "Packaging", "Automotive", " ICT", "Edilizia")
+- visitor_profile_tag: ruolo principale visitatori (es: "CTO", "Procurement Manager", "CEO", "Installatori")
+- product_category_tags: max 3 categorie specifiche (es: "Macchinari", "Software", "Ingredienti")
 
 Rispondi SOLO con JSON valido, niente altro testo. Se un dato non è disponibile, usa null per quel campo.`;
 
@@ -374,9 +380,49 @@ Rispondi SOLO con JSON valido, niente altro testo. Se un dato non è disponibile
           updated++;
         }
         
+        applyTagsFromAI(data);
         showMessage(`Dati estratti: ${updated} campi compilati`, 'success');
       } catch (e) {
         showMessage('Errore: ' + e.message, 'danger');
+      }
+    }
+    
+    async function applyTagsFromAI(data) {
+      const tagsToCreate = [];
+      
+      if (data.sector_tag) {
+        tagsToCreate.push({name: data.sector_tag.toLowerCase().trim(), category: 'sector'});
+      }
+      if (data.visitor_profile_tag) {
+        tagsToCreate.push({name: data.visitor_profile_tag.toLowerCase().trim(), category: 'visitor_profile'});
+      }
+      if (data.product_category_tags && Array.isArray(data.product_category_tags)) {
+        data.product_category_tags.forEach(cat => {
+          tagsToCreate.push({name: cat.toLowerCase().trim(), category: 'product_category'});
+        });
+      }
+      
+      if (tagsToCreate.length === 0) return;
+      
+      try {
+        const createdTags = [];
+        for (const tag of tagsToCreate) {
+          const resp = await fetch('/api/tags', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(tag)
+          });
+          if (resp.ok) {
+            const t = await resp.json();
+            createdTags.push(t.id);
+          }
+        }
+        window.pendingTagIds = createdTags;
+        if (createdTags.length > 0) {
+          showMessage(`${createdTags.length} tag creati - saranno associati al salvataggio`, 'info');
+        }
+      } catch (e) {
+        console.error('Error creating tags:', e);
       }
     }
 
@@ -431,6 +477,20 @@ Rispondi SOLO con JSON valido, niente altro testo. Se un dato non è disponibile
         const result = await resp.json();
         if (resp.ok) {
           showMessage('Fiera salvata con successo!', 'success');
+          
+          if (window.pendingTagIds && window.pendingTagIds.length > 0) {
+            try {
+              await fetch('/api/fairs/' + result.id + '/tags', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({tag_ids: window.pendingTagIds})
+              });
+              window.pendingTagIds = null;
+            } catch (tagErr) {
+              console.log('Tag association error:', tagErr);
+            }
+          }
+          
           setTimeout(() => window.location.href = '/fairs', 1500);
         } else {
           showMessage('Errore: ' + result.detail, 'danger');

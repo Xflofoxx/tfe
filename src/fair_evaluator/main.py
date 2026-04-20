@@ -149,6 +149,7 @@ class FairUpdate(BaseModel):
     facebook: str | None = None
     tiktok: str | None = None
     previous_editions: list | None = None
+    tag_ids: list[int] | None = None
 
 
 class SettingsUpdate(BaseModel):
