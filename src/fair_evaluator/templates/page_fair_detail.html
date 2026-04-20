@@ -81,7 +81,7 @@
             <div class="d-flex gap-2 flex-wrap">
               <button class="btn btn-primary" onclick="parseAttachments()"><i class="fas fa-file-import me-2"></i>Estrai da Allegati</button>
               <button class="btn btn-info" onclick="window.open('/api/fairs/' + fairId + '/report?format=html', '_blank')"><i class="fas fa-file-pdf me-2"></i>Report</button>
-              <button class="btn btn-success" onclick="evaluateFair()" {% if not fair.attachments %}disabled{% endif %}><i class="fas fa-robot me-2"></i>Valuta</button>
+              <button class="btn btn-success" onclick="evaluateFair()" {% if not fair.attachments or fair.attachments|length == 0 %}disabled{% endif %}><i class="fas fa-robot me-2"></i>Valuta</button>
               <button class="btn btn-warning" onclick="saveAllFields()"><i class="fas fa-save me-2"></i>Salva</button>
               <button class="btn btn-secondary" onclick="archiveFair()"><i class="fas fa-archive me-2"></i>Archivia</button>
               <button class="btn btn-danger" onclick="deleteFair()"><i class="fas fa-trash me-2"></i>Elimina</button>
@@ -289,9 +289,9 @@
                 <h5><i class="fas fa-paperclip me-2 text-info"></i>Allegati</h5>
               </div>
               <div class="section-body">
-                {% if fair.attachments %}
+                {% if fair.attachments and fair.attachments|length > 0 %}
                   {% for att in fair.attachments %}
-                  <a href="{{ att.url }}" target="_blank" class="file-item"><i class="fas fa-file-pdf"></i>{{ att.name }}</a>
+                  <a href="{{ att.file_path or '#' }}" target="_blank" class="file-item"><i class="fas fa-file-pdf"></i>{{ att.filename or att.name }}</a>
                   {% endfor %}
                 {% else %}
                 <p class="text-muted small">Nessun allegato</p>
